@@ -446,6 +446,7 @@ dependencies = [
  "base64 0.23.1",
  "bytes",
  "futures",
+ "if-addrs",
  "mdns-sd",
  "rand 0.10.2",
  "reqwest",

@@ -32,6 +32,7 @@ dependencies:
   uuid: ^4.6.0
   flutter_rust_bridge: 2.13.0
   freezed_annotation: 3.1.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:

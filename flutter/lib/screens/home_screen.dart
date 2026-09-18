@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:theme/theme.dart';
 
@@ -212,29 +213,185 @@ class _ConfirmSendView extends ConsumerWidget {
   }
 }
 
-/// Receive mode: nearby devices shown while waiting for an incoming
-/// request, which surfaces as an overlay from the app shell (see
-/// `main.dart`) rather than by navigating away from this view. Back
-/// returns to idle.
+/// Receive mode: a small sub-flow (see [ReceiveStage]) rather than the
+/// nearby-devices list — the key behavior change from the old
+/// `_ReceiveModeView`, since incoming requests arrive via the
+/// [pairingRequestsProvider]-driven overlay (see `main.dart`) regardless
+/// of what this view shows, and browsing nearby devices has no purpose
+/// while receiving. Back returns to idle (and tears down any Wi-Fi Direct
+/// group created this session via [HomeFlowNotifier.back]).
 class _ReceiveModeView extends ConsumerWidget {
   const _ReceiveModeView();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final receive = ref.watch(homeFlowProvider.select((s) => s.receive));
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) ref.read(homeFlowProvider.notifier).reset();
+        if (!didPop) ref.read(homeFlowProvider.notifier).back();
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Waiting to Receive'),
-          leading: BackButton(onPressed: () => ref.read(homeFlowProvider.notifier).reset()),
+          title: const Text('Receive'),
+          leading: BackButton(onPressed: () => ref.read(homeFlowProvider.notifier).back()),
         ),
-        body: const NearbyDevicesBody(
-          emptyTitle: 'Waiting for nearby devices…',
-          emptySubtitle: 'Keep this screen open — you\'ll be prompted here when another '
-              'device wants to send you files.',
+        body: switch (receive.stage) {
+          ReceiveStage.checkingLan => const _CheckingLanBody(),
+          ReceiveStage.noLanFound => const _CreateNetworkPromptBody(),
+          ReceiveStage.creatingGroup => const _CreatingGroupBody(),
+          ReceiveStage.wifiDirectError => _WifiDirectErrorBody(message: receive.errorMessage),
+          ReceiveStage.waiting => _WaitingToReceiveBody(address: receive.address),
+        },
+      ),
+    );
+  }
+}
+
+class _CheckingLanBody extends StatelessWidget {
+  const _CheckingLanBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ThemeSpinner(type: ThemeSpinnerType.dualRing),
+          SizedBox(height: 20),
+          Text('Checking your network…'),
+        ],
+      ),
+    );
+  }
+}
+
+/// No usable LAN was found — prompts the user to create a transient
+/// Wi-Fi Direct network so a sender with no shared Wi-Fi can still reach
+/// this device.
+class _CreateNetworkPromptBody extends ConsumerWidget {
+  const _CreateNetworkPromptBody();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ThemeCard(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.wifi_off_outlined, size: 56, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 20),
+                const Text('No Wi-Fi network found', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                const Text(
+                  'FileDrop couldn\'t find a shared Wi-Fi network to receive over. Create a '
+                  'temporary Wi-Fi Direct network so a nearby device can send you files '
+                  'directly, with no router needed.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () => ref.read(homeFlowProvider.notifier).createWifiDirectGroup(),
+                  icon: const Icon(Icons.wifi_tethering),
+                  label: const Text('Create Network'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CreatingGroupBody extends StatelessWidget {
+  const _CreatingGroupBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ThemeSpinner(type: ThemeSpinnerType.pulse),
+          SizedBox(height: 20),
+          Text('Creating Wi-Fi Direct network…'),
+        ],
+      ),
+    );
+  }
+}
+
+class _WifiDirectErrorBody extends ConsumerWidget {
+  const _WifiDirectErrorBody({this.message});
+
+  final String? message;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ThemeErrorState(
+      title: 'Couldn\'t create network',
+      subtitle: message ?? 'An unknown error occurred while setting up Wi-Fi Direct.',
+      icon: Icons.wifi_tethering_error_rounded,
+      onRetry: () => ref.read(homeFlowProvider.notifier).retryWifiDirect(),
+    );
+  }
+}
+
+/// Waiting to receive: shows this device's address and a spinner. No
+/// nearby-devices list here — the incoming-transfer prompt arrives via
+/// the app-shell-level [pairingRequestsProvider] overlay regardless of
+/// what's on screen.
+class _WaitingToReceiveBody extends StatelessWidget {
+  const _WaitingToReceiveBody({this.address});
+
+  final String? address;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ThemeSpinner(type: ThemeSpinnerType.ripple, size: 56),
+            const SizedBox(height: 24),
+            const Text('Waiting for incoming files…', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            const Text(
+              'Keep this screen open. You\'ll be prompted here when another device '
+              'wants to send you files.',
+              textAlign: TextAlign.center,
+            ),
+            if (address != null) ...[
+              const SizedBox(height: 20),
+              ThemeCard(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lan_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      Text(address!, style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.copy_outlined, size: 18),
+                        tooltip: 'Copy address',
+                        onPressed: () => Clipboard.setData(ClipboardData(text: address!)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );

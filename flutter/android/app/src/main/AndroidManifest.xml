@@ -1,4 +1,24 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Wi-Fi Direct (android.net.wifi.p2p.WifiP2pManager), used only for
+         group creation/teardown to establish a transient direct link when
+         no shared LAN exists (see docs/ARCHITECTURE.md). ACCESS_FINE_LOCATION
+         is required pre-Android 13 for any Wi-Fi P2P API. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <!-- Android 13+ (API 33) replacement for ACCESS_FINE_LOCATION when the
+         app does not derive physical location from Wi-Fi scan results.
+         neverForLocation is correct here: this app never calls
+         discoverPeers()/scanning APIs, only createGroup()/
+         requestConnectionInfo()/removeGroup(), none of which read peer
+         physical position — see WifiDirectHandler.kt. -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
+    <!-- required="false": ExistingLan mode is the fallback, so the app
+         must still install/run on devices without Wi-Fi Direct hardware. -->
+    <uses-feature android:name="android.hardware.wifi.direct" android:required="false" />
     <application
         android:label="filedrop"
         android:name="${applicationName}"

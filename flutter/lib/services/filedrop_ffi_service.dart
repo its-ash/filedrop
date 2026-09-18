@@ -55,9 +55,40 @@ class FileDropFfiService {
   }
 
   /// Starts the HTTP/WebSocket transfer server on a free local port.
-  Future<({String address, int port})> startServer() => _bindings.startServer();
+  ///
+  /// Tracks whether the server is already running so callers (e.g. the
+  /// receive flow) can avoid double-binding — the underlying Rust
+  /// `start_server` binds a fresh listener every call with no idempotency
+  /// of its own.
+  Future<({String address, int port})> startServer() async {
+    final result = await _bindings.startServer();
+    _serverRunning = true;
+    return result;
+  }
 
-  Future<void> stopServer() => _bindings.stopServer();
+  Future<void> stopServer() async {
+    await _bindings.stopServer();
+    _serverRunning = false;
+  }
+
+  bool _serverRunning = false;
+
+  /// Whether [startServer] has been called and [stopServer] has not since.
+  bool get isServerRunning => _serverRunning;
+
+  /// Ensures the transfer server is running, starting it only if it isn't
+  /// already (avoids double-binding a second listener on top of the one
+  /// `main.dart` starts at app launch).
+  Future<({String address, int port})?> ensureServerRunning() async {
+    if (_serverRunning) return null;
+    return startServer();
+  }
+
+  /// Real, non-heuristic check for a usable LAN interface right now (see
+  /// `check_usable_lan` in `rust/filedrop-ffi/src/api/mod.rs`): enumerates
+  /// non-loopback interfaces and returns the first private-range IPv4
+  /// address found, or `null` if none exists.
+  Future<String?> checkUsableLan() => frb.checkUsableLan();
 
   /// Starts mDNS + UDP broadcast discovery. Discovered devices arrive as
   /// [DeviceDiscoveredEvent]s on [events], not as a return value.

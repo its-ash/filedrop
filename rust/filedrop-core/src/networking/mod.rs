@@ -14,6 +14,6 @@ mod local_iface;
 mod mode;
 mod resolve;
 
-pub use local_iface::local_ipv4_addresses;
+pub use local_iface::{local_ipv4_addresses, usable_lan_ipv4};
 pub use mode::{ConnectionMode, PlatformDirectCapability};
 pub use resolve::{pick_server_port, ResolvedEndpoint, DEFAULT_PORT};

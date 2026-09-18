@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../models/device.dart';
 import '../models/events.dart';
 import '../models/transfer.dart';
 import '../services/filedrop_ffi_service.dart';
+import '../services/wifi_direct_service.dart';
 
 /// Which step of the Home tab's Send/Receive flow is currently shown.
 ///
@@ -25,10 +29,73 @@ enum HomeFlowStage {
   /// `sendFiles`.
   confirmSend,
 
-  /// Receive mode: nearby devices are shown while the user waits for an
-  /// incoming pairing/transfer request (surfaced separately via the
-  /// [pairingRequestsProvider]-driven overlay, not by navigating away).
+  /// Receive mode: see [ReceiveStage] for the sub-flow (LAN check,
+  /// Create Network prompt, Wi-Fi Direct group creation, waiting to
+  /// receive). Incoming pairing/transfer requests are surfaced separately
+  /// via the [pairingRequestsProvider]-driven overlay, not by navigating
+  /// away from this stage.
   receiveMode,
+}
+
+/// Sub-state of [HomeFlowStage.receiveMode], driving which view
+/// `_ReceiveModeView` in `home_screen.dart` renders.
+enum ReceiveStage {
+  /// [check_usable_lan] is in flight.
+  checkingLan,
+
+  /// No usable LAN interface was found; show the "Create Network" prompt
+  /// (a Wi-Fi Direct group is the way to get one).
+  noLanFound,
+
+  /// Permission request + [WifiDirectService.createGroup] is in flight.
+  creatingGroup,
+
+  /// [WifiDirectService.createGroup] failed; show the error with a Retry
+  /// button back to [noLanFound].
+  wifiDirectError,
+
+  /// A usable IP (LAN or freshly-created Wi-Fi Direct group) is known and
+  /// the transfer server is up — show the waiting-for-incoming-files view.
+  waiting,
+}
+
+/// Immutable snapshot of the receive sub-flow, held on [HomeFlowState].
+class ReceiveState {
+  final ReceiveStage stage;
+
+  /// The IP other devices should connect to, once known (LAN address or
+  /// Wi-Fi Direct group owner address).
+  final String? address;
+
+  /// Error message from a failed [WifiDirectService.createGroup] call,
+  /// set only while [stage] is [ReceiveStage.wifiDirectError].
+  final String? errorMessage;
+
+  /// Whether a Wi-Fi Direct group was created this session, so
+  /// [HomeFlowNotifier.reset]/[HomeFlowNotifier.back] know whether calling
+  /// `removeGroup()` is meaningful.
+  final bool groupCreated;
+
+  const ReceiveState({
+    this.stage = ReceiveStage.checkingLan,
+    this.address,
+    this.errorMessage,
+    this.groupCreated = false,
+  });
+
+  ReceiveState copyWith({
+    ReceiveStage? stage,
+    String? address,
+    String? errorMessage,
+    bool? groupCreated,
+    bool clearError = false,
+  }) =>
+      ReceiveState(
+        stage: stage ?? this.stage,
+        address: address ?? this.address,
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+        groupCreated: groupCreated ?? this.groupCreated,
+      );
 }
 
 /// Drives the Home tab's flow stage plus the file/device selections made
@@ -40,7 +107,116 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
 
   void startSend() => state = state.copyWith(stage: HomeFlowStage.filePicker, clearFiles: true);
 
-  void startReceive() => state = state.copyWith(stage: HomeFlowStage.receiveMode);
+  /// Enters receive mode and kicks off the LAN check. See
+  /// `_ReceiveModeView` in `home_screen.dart` for the resulting UI per
+  /// [ReceiveStage].
+  Future<void> startReceive() async {
+    state = state.copyWith(
+      stage: HomeFlowStage.receiveMode,
+      receive: const ReceiveState(),
+    );
+    await _checkLanAndMaybeWait();
+  }
+
+  Future<void> _checkLanAndMaybeWait() async {
+    final service = ref.read(fileDropServiceProvider);
+    String? ip;
+    try {
+      ip = await service.checkUsableLan();
+    } catch (_) {
+      ip = null;
+    }
+
+    if (state.stage != HomeFlowStage.receiveMode) return; // user navigated away meanwhile
+
+    if (ip == null) {
+      state = state.copyWith(receive: state.receive.copyWith(stage: ReceiveStage.noLanFound));
+      return;
+    }
+
+    await _startServerAndEnterWaiting(ip);
+  }
+
+  Future<void> _startServerAndEnterWaiting(String address) async {
+    final service = ref.read(fileDropServiceProvider);
+    try {
+      await service.ensureServerRunning();
+    } catch (_) {
+      // start_server failing is a genuine engine problem, not a
+      // Wi-Fi-Direct-specific one; fall back to showing the address we do
+      // have rather than hanging indefinitely on the checking state.
+    }
+
+    if (state.stage != HomeFlowStage.receiveMode) return;
+    state = state.copyWith(
+      receive: state.receive.copyWith(stage: ReceiveStage.waiting, address: address),
+    );
+  }
+
+  /// "Create Network" button: requests the SDK-appropriate runtime
+  /// permission, then creates a Wi-Fi Direct group.
+  Future<void> createWifiDirectGroup() async {
+    state = state.copyWith(
+      receive: state.receive.copyWith(stage: ReceiveStage.creatingGroup, clearError: true),
+    );
+
+    try {
+      final granted = await _requestWifiDirectPermission();
+      if (!granted) {
+        state = state.copyWith(
+          receive: state.receive.copyWith(
+            stage: ReceiveStage.wifiDirectError,
+            errorMessage: 'Permission was not granted, so a Wi-Fi Direct network '
+                'cannot be created.',
+          ),
+        );
+        return;
+      }
+
+      final address = await WifiDirectService.instance.createGroup();
+      if (state.stage != HomeFlowStage.receiveMode) return;
+
+      state = state.copyWith(receive: state.receive.copyWith(groupCreated: true));
+      await _startServerAndEnterWaiting(address);
+    } on WifiDirectException catch (e) {
+      if (state.stage != HomeFlowStage.receiveMode) return;
+      state = state.copyWith(
+        receive: state.receive.copyWith(stage: ReceiveStage.wifiDirectError, errorMessage: e.message),
+      );
+    } catch (e) {
+      if (state.stage != HomeFlowStage.receiveMode) return;
+      state = state.copyWith(
+        receive: state.receive.copyWith(
+          stage: ReceiveStage.wifiDirectError,
+          errorMessage: 'Could not create a Wi-Fi Direct network: $e',
+        ),
+      );
+    }
+  }
+
+  /// Retries from the error state back to the Create Network prompt.
+  void retryWifiDirect() {
+    state = state.copyWith(
+      receive: state.receive.copyWith(stage: ReceiveStage.noLanFound, clearError: true),
+    );
+  }
+
+  /// Android 13+ (API 33) requires `NEARBY_WIFI_DEVICES`; older versions
+  /// require `ACCESS_FINE_LOCATION` for any Wi-Fi P2P API. `permission_handler`
+  /// resolves the right underlying platform permission for the running
+  /// device's SDK level via [Permission.nearbyWifiDevices]/[Permission.locationWhenInUse]
+  /// respectively — request both in sequence and treat either being
+  /// granted (the one actually applicable to this OS version) as success,
+  /// since a denial of the inapplicable one on old/new OS is reported as
+  /// `PermissionStatus.granted` by the plugin already (it only asks for
+  /// what the platform actually needs).
+  Future<bool> _requestWifiDirectPermission() async {
+    final nearbyStatus = await Permission.nearbyWifiDevices.request();
+    if (nearbyStatus.isGranted) return true;
+
+    final locationStatus = await Permission.locationWhenInUse.request();
+    return locationStatus.isGranted;
+  }
 
   void filesPicked(List<String> filePaths) {
     state = state.copyWith(stage: HomeFlowStage.deviceSelectSend, filePaths: filePaths);
@@ -53,14 +229,19 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
   /// Returns to idle (Send/Receive choice). Used both after a successful
   /// dispatch (the active-transfer view then takes over) and when the
   /// user backs out of the flow mid-way.
-  void reset() => state = const HomeFlowState();
+  void reset() {
+    _maybeRemoveWifiDirectGroup();
+    state = const HomeFlowState();
+  }
 
   /// Step back one stage, discarding whatever was selected at the stage
   /// being left. Used for in-flow back-button handling.
   void back() {
     switch (state.stage) {
       case HomeFlowStage.idle:
+        state = const HomeFlowState();
       case HomeFlowStage.receiveMode:
+        _maybeRemoveWifiDirectGroup();
         state = const HomeFlowState();
       case HomeFlowStage.filePicker:
         state = const HomeFlowState();
@@ -70,6 +251,19 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
         state = state.copyWith(stage: HomeFlowStage.deviceSelectSend, clearDevice: true);
     }
   }
+
+  /// Tears down any Wi-Fi Direct group created this session. Only called
+  /// (fire-and-forget) when leaving receive mode, and only actually calls
+  /// into the platform channel if a group was created — `removeGroup()`
+  /// on the Kotlin side is harmless even with nothing to remove, but this
+  /// avoids the call entirely in the common ExistingLan-only case.
+  void _maybeRemoveWifiDirectGroup() {
+    if (!state.receive.groupCreated) return;
+    // Fire-and-forget: nothing in the UI blocks on teardown completing,
+    // and WifiDirectService.removeGroup already treats "no group"/failure
+    // as a benign outcome on the Kotlin side.
+    unawaited(WifiDirectService.instance.removeGroup().catchError((_) {}));
+  }
 }
 
 final homeFlowProvider = NotifierProvider<HomeFlowNotifier, HomeFlowState>(HomeFlowNotifier.new);
@@ -78,17 +272,20 @@ class HomeFlowState {
   final HomeFlowStage stage;
   final List<String> filePaths;
   final Device? device;
+  final ReceiveState receive;
 
   const HomeFlowState({
     this.stage = HomeFlowStage.idle,
     this.filePaths = const [],
     this.device,
+    this.receive = const ReceiveState(),
   });
 
   HomeFlowState copyWith({
     HomeFlowStage? stage,
     List<String>? filePaths,
     Device? device,
+    ReceiveState? receive,
     bool clearFiles = false,
     bool clearDevice = false,
   }) =>
@@ -96,6 +293,7 @@ class HomeFlowState {
         stage: stage ?? this.stage,
         filePaths: clearFiles ? const [] : (filePaths ?? this.filePaths),
         device: clearDevice ? null : (device ?? this.device),
+        receive: receive ?? this.receive,
       );
 }
 

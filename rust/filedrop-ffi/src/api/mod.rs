@@ -371,6 +371,22 @@ pub async fn platform_direct_capability(target_os: String) -> PlatformDirectCapa
     PlatformDirectCapabilityDto::from(ConnectionMode::platform_capability(&target_os))
 }
 
+/// Checks whether a usable LAN interface exists right now, via real
+/// non-loopback IPv4 interface enumeration filtered to private ranges
+/// (see `filedrop_core::networking::usable_lan_ipv4`) — not the
+/// UDP-default-route heuristic `local_ipv4_addresses` uses internally for
+/// address advertising, which is not a reliable "do we have a LAN"
+/// signal. Returns `Some(ip)` if a usable interface was found, `None`
+/// otherwise (e.g. Wi-Fi off, only a cellular/public-IP route present).
+/// Intended to be called by Dart before entering receive mode, to decide
+/// between showing the waiting-to-receive screen directly or prompting
+/// the user to create a Wi-Fi Direct group first.
+pub async fn check_usable_lan() -> Result<Option<String>, String> {
+    filedrop_core::networking::usable_lan_ipv4()
+        .map(|opt| opt.map(|ip| ip.to_string()))
+        .map_err(|e| e.to_string())
+}
+
 fn chrono_now_plus_secs(secs: i64) -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()

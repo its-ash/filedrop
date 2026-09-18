@@ -11,3 +11,8 @@ deploy: build
 	git add -A
 	git commit -m "$$(copilot -sp 'Analyze the staged git changes and generate a concise commit message. Output ONLY the commit message. Do not execute any commands. Do not include quotes, markdown, explanation, or bullet points.')"
 	git push origin main
+	$(eval VERSION := v$(shell grep '^version:' flutter/pubspec.yaml | sed 's/version: //' | cut -d'+' -f1))
+	gh release create $(VERSION) flutter/build/app/outputs/flutter-apk/app-release.apk \
+		--title "$(VERSION)" \
+		--generate-notes \
+		|| gh release upload $(VERSION) flutter/build/app/outputs/flutter-apk/app-release.apk --clobber
