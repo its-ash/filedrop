@@ -123,6 +123,7 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
     String? ip;
     try {
       ip = await service.checkUsableLan();
+      ip = null; // TEMP-TEST-ONLY: force no-LAN path for emulator verification
     } catch (_) {
       ip = null;
     }

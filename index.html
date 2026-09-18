@@ -82,8 +82,8 @@
   .nav-cta:active { transform: scale(0.97); }
 
   /* ---------- Hero ---------- */
-  header.hero {
-    padding: 88px 0 64px;
+  header.hero { padding: 64px 0 72px; }
+  .hero-grid {
     display: grid;
     grid-template-columns: 1.05fr 0.95fr;
     gap: 56px;
@@ -99,23 +99,24 @@
     border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
     padding: 5px 10px;
     border-radius: 999px;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
   .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
   h1 {
-    font-size: clamp(36px, 5vw, 58px);
-    line-height: 1.05;
+    font-size: clamp(36px, 5vw, 56px);
+    line-height: 1.1;
     letter-spacing: -0.035em;
-    margin: 0 0 20px;
+    margin: 0 0 18px;
     font-weight: 650;
+    padding-bottom: 0.1em;
   }
   h1 em { font-style: italic; color: var(--accent); }
   .hero p.lede {
-    font-size: 18px;
+    font-size: 17px;
     line-height: 1.55;
     color: var(--text-dim);
-    max-width: 52ch;
-    margin: 0 0 32px;
+    max-width: 50ch;
+    margin: 0 0 28px;
   }
   .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; }
   .btn {
@@ -186,7 +187,7 @@
   .progress-label b { color: var(--text); font-weight: 500; }
   .progress-track { height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; }
   .progress-fill { height: 100%; width: 78%; border-radius: 999px; background: var(--accent); }
-  .progress-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); margin-top: 8px; }
+  .progress-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--text-faint); margin-top: 8px; white-space: nowrap; }
 
   /* ---------- Trust bar ---------- */
   .trust-bar {
@@ -344,7 +345,8 @@
 
   /* ---------- Responsive ---------- */
   @media (max-width: 860px) {
-    header.hero { grid-template-columns: 1fr; padding-top: 48px; }
+    header.hero { padding-top: 48px; }
+    .hero-grid { grid-template-columns: 1fr; }
     .hero-visual { max-width: 100%; justify-self: stretch; order: -1; }
     .nav-links a:not(.nav-cta) { display: none; }
     .bento { grid-template-columns: 1fr 1fr; }
@@ -379,6 +381,7 @@
 </nav>
 
 <header class="hero" id="top">
+  <div class="wrap hero-grid">
   <div>
     <span class="eyebrow"><span class="dot"></span>Local-first, always</span>
     <h1>Send files without <em>the internet</em>.</h1>
@@ -418,6 +421,7 @@
         <div class="progress-meta"><span>1.8 GB / 2.3 GB</span><span>42 MB/s · ~12s left</span></div>
       </div>
     </div>
+  </div>
   </div>
 </header>
 
