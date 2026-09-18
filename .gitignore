@@ -1,0 +1,66 @@
+# --- Rust ---
+/rust/target/
+**/target/
+Cargo.lock.bak
+*.pdb
+
+# --- Flutter / Dart ---
+flutter/.dart_tool/
+flutter/.flutter-plugins
+flutter/.flutter-plugins-dependencies
+flutter/.pub-cache/
+flutter/.pub/
+flutter/build/
+flutter/pubspec.lock
+**/doc/api/
+.flutter-versions
+
+# Android
+flutter/android/**/gradle-wrapper.jar
+flutter/android/.gradle
+flutter/android/captures/
+flutter/android/gradlew
+flutter/android/gradlew.bat
+flutter/android/local.properties
+flutter/android/**/GeneratedPluginRegistrant.java
+flutter/android/key.properties
+flutter/**/*.keystore
+flutter/**/*.jks
+
+# iOS / macOS
+flutter/ios/Flutter/.last_build_id
+flutter/ios/Flutter/Generated.xcconfig
+flutter/ios/Flutter/flutter_export_environment.sh
+flutter/ios/Pods/
+flutter/ios/.symlinks/
+flutter/macos/Flutter/GeneratedPluginRegistrant.swift
+flutter/macos/Flutter/ephemeral/
+flutter/**/Pods/
+flutter/**/*.xcworkspace/xcuserdata/
+flutter/**/xcuserdata/
+
+# Windows / Linux desktop
+flutter/windows/flutter/generated_plugin_registrant.cc
+flutter/windows/flutter/generated_plugin_registrant.h
+flutter/windows/flutter/generated_plugins.cmake
+flutter/linux/flutter/generated_plugin_registrant.cc
+flutter/linux/flutter/generated_plugin_registrant.h
+flutter/linux/flutter/generated_plugins.cmake
+
+# Web (only relevant if web support is added later)
+flutter/web/
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+.claude/
+*.swp
+*~
+
+# --- flutter_rust_bridge generated output (regenerate via codegen, don't commit) ---
+flutter/lib/src/rust/
+rust/filedrop-ffi/src/frb_generated.rs

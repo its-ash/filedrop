@@ -1,0 +1,38 @@
+[package]
+name = "filedrop-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "FFI surface exposing filedrop-core to Flutter/Dart via flutter_rust_bridge."
+
+[lib]
+name = "filedrop_ffi"
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[dependencies]
+filedrop-core = { path = "../filedrop-core" }
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+flutter_rust_bridge = { version = "=2.13.0", features = ["uuid"] }
+
+# `flutter_rust_bridge` 2.13.0 is the live FFI boundary: `src/api/mod.rs`'s
+# plain `pub async fn`s (plus the `#[frb(init)]` hook and the
+# `StreamSink<FileDropEventDto>`-based `subscribe_events`) are introspected
+# by `flutter_rust_bridge_codegen generate` (config: `flutter_rust_bridge.yaml`
+# at the repo root) to produce `src/frb_generated.rs` here and the Dart
+# bindings in `flutter/lib/src/rust/`. The `uuid` feature is required for
+# `Uuid` fields/return types to cross the bridge as Dart's `UuidValue`.
+#
+# The original hand-written `#[no_mangle] extern "C"` ABI in `src/c_abi.rs`
+# is superseded by this generated bridge (Dart no longer calls it) but is
+# kept in the workspace, unused, as a documented lower-level ABI in case a
+# non-Dart consumer is ever needed.
+#
+# Regenerate after any change to `src/api/mod.rs`'s public signatures:
+#   flutter_rust_bridge_codegen generate   (run from the repo root)

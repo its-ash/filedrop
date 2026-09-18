@@ -1,0 +1,47 @@
+name: filedrop
+description: "FileDrop: cross-platform local file transfer over LAN, no cloud, no accounts."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Shared design-system package (per project convention): provides
+  # AppTheme.lightTheme()/darkTheme() and the ThemeX component library.
+  # Local path dependency for this scaffold pass — not published to pub.dev.
+  theme:
+    path: ../../theme
+
+  # State management
+  flutter_riverpod: ^3.4.3
+
+  # Platform integration
+  path_provider: ^2.1.6
+  file_picker: 12.1.1 # pinned to match theme package's transitive dependency
+
+  # Pairing UI (QR generation + scanning)
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.2
+
+  # IDs shared with the Rust side's UUID format
+  uuid: ^4.6.0
+  flutter_rust_bridge: 2.13.0
+  freezed_annotation: 3.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  freezed: 3.2.5
+  build_runner: ^2.15.1
+  json_serializable: ^6.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

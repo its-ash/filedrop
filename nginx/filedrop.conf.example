@@ -1,0 +1,79 @@
+# FileDrop — optional Nginx reverse proxy example.
+#
+# IMPORTANT: this is entirely optional. The Rust axum server
+# (rust/filedrop-core/src/transfer/server.rs) binds directly to a LAN
+# interface and serves the FileDrop HTTP/WebSocket API completely
+# standalone — nginx is never required for FileDrop to work. This config
+# exists only for setups that already run nginx on a device (e.g. a
+# home server / NAS acting as an always-on FileDrop node) and want
+# TLS termination, access logging, or a stable hostname in front of it.
+#
+# Usage: copy to /etc/nginx/sites-available/filedrop.conf (or your
+# platform's equivalent), adjust `server_name`/`upstream` as needed, and
+# symlink into sites-enabled. Do NOT assume this file works unmodified —
+# it is a documented starting point, not a turnkey config.
+
+upstream filedrop_backend {
+    # The Rust server's bind address/port. Matches
+    # filedrop_core::networking::DEFAULT_PORT (53317) unless the app
+    # picked a different free port on startup (see docs/PROTOCOL.md "Server & Port").
+    server 127.0.0.1:53317;
+}
+
+server {
+    listen 8443 ssl;
+    listen [::]:8443 ssl;
+    server_name filedrop.local;
+
+    # TLS termination is the main reason to put nginx in front of
+    # FileDrop at all — the Rust server itself only speaks plain HTTP,
+    # since it's designed for trusted-LAN use, not public internet
+    # exposure. Supply your own cert/key (e.g. from a local CA or
+    # mkcert) if you enable this.
+    ssl_certificate     /etc/nginx/certs/filedrop.crt;
+    ssl_certificate_key /etc/nginx/certs/filedrop.key;
+
+    # Large file uploads: FileDrop streams chunked transfers, but nginx
+    # still needs to be told not to cap request body size or buffer the
+    # whole body before forwarding it.
+    client_max_body_size 0;
+    proxy_request_buffering off;
+    proxy_buffering off;
+
+    # Transfers can be long-running for large files on slow links; don't
+    # let nginx's default proxy timeouts kill an in-progress chunked
+    # upload/download.
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+
+    location /health {
+        proxy_pass http://filedrop_backend;
+    }
+
+    location /api/ {
+        proxy_pass http://filedrop_backend;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Preserve FileDrop's custom transfer headers end-to-end —
+        # nginx passes through unknown headers by default, but this is
+        # called out explicitly since dropping any of these breaks the
+        # protocol (see docs/PROTOCOL.md §4.2).
+        proxy_pass_request_headers on;
+    }
+
+    # WebSocket upgrade support, for the future status/event-stream
+    # endpoint referenced in the project spec (HTTP/WebSocket for
+    # transfer + status).
+    location /ws/ {
+        proxy_pass http://filedrop_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+}
