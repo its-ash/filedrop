@@ -38,6 +38,22 @@ class FileDropFfiService {
 
   bool _initialized = false;
 
+  /// This device's own identity, as advertised to peers via discovery.
+  /// Populated by [init]; [address]/[port] are filled in once the transfer
+  /// server actually binds (see [startServer]), since the advertised port
+  /// isn't known until then.
+  Device? _selfDevice;
+
+  /// This device's identity for discovery advertisement. Only valid after
+  /// [init] has completed.
+  Device get selfDevice {
+    final device = _selfDevice;
+    if (device == null) {
+      throw StateError('FileDropFfiService.selfDevice read before init()');
+    }
+    return device;
+  }
+
   /// Must be called once at app startup (see `main.dart`). Initializes
   /// flutter_rust_bridge itself, then the Rust engine, and begins
   /// forwarding the Rust event stream.
@@ -50,6 +66,14 @@ class FileDropFfiService {
     }
     final deviceId = await _bindings.initEngine(deviceName: deviceName, appDataDir: appDataDir);
     _initialized = true;
+    _selfDevice = Device(
+      deviceId: deviceId,
+      name: deviceName,
+      address: '',
+      port: 0,
+      platform: 'android',
+      paired: false,
+    );
     _startEventForwarding();
     return deviceId;
   }
@@ -63,6 +87,17 @@ class FileDropFfiService {
   Future<({String address, int port})> startServer() async {
     final result = await _bindings.startServer();
     _serverRunning = true;
+    final self = _selfDevice;
+    if (self != null) {
+      _selfDevice = Device(
+        deviceId: self.deviceId,
+        name: self.name,
+        address: result.address,
+        port: result.port,
+        platform: self.platform,
+        paired: self.paired,
+      );
+    }
     return result;
   }
 

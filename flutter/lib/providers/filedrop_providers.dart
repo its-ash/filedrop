@@ -123,7 +123,6 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
     String? ip;
     try {
       ip = await service.checkUsableLan();
-      ip = null; // TEMP-TEST-ONLY: force no-LAN path for emulator verification
     } catch (_) {
       ip = null;
     }
@@ -219,11 +218,19 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
     return locationStatus.isGranted;
   }
 
+  /// Nearby devices are only ever discovered starting at this step: the
+  /// Home tab's Send flow shows no device list during [HomeFlowStage.idle]
+  /// or [HomeFlowStage.filePicker], so there is nothing worth advertising
+  /// for/discovering until files are actually picked and a destination is
+  /// about to be chosen.
   void filesPicked(List<String> filePaths) {
     state = state.copyWith(stage: HomeFlowStage.deviceSelectSend, filePaths: filePaths);
+    ref.read(nearbyDevicesProvider.notifier).clear();
+    unawaited(ref.read(fileDropServiceProvider).startDiscovery(ref.read(fileDropServiceProvider).selfDevice));
   }
 
   void deviceSelected(Device device) {
+    unawaited(ref.read(fileDropServiceProvider).stopDiscovery());
     state = state.copyWith(stage: HomeFlowStage.confirmSend, device: device);
   }
 
@@ -232,6 +239,7 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
   /// user backs out of the flow mid-way.
   void reset() {
     _maybeRemoveWifiDirectGroup();
+    _maybeStopDiscovery();
     state = const HomeFlowState();
   }
 
@@ -247,9 +255,27 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
       case HomeFlowStage.filePicker:
         state = const HomeFlowState();
       case HomeFlowStage.deviceSelectSend:
+        _maybeStopDiscovery();
         state = state.copyWith(stage: HomeFlowStage.filePicker, clearDevice: true);
       case HomeFlowStage.confirmSend:
+        // Returning to device selection: still need discovery running.
+        // Not cleared here — the previously-discovered list is still
+        // fresh (discovery was never stopped between deviceSelectSend and
+        // confirmSend), so re-showing it immediately is correct.
         state = state.copyWith(stage: HomeFlowStage.deviceSelectSend, clearDevice: true);
+        unawaited(
+          ref.read(fileDropServiceProvider).startDiscovery(ref.read(fileDropServiceProvider).selfDevice),
+        );
+    }
+  }
+
+  /// Stops discovery if the current/previous stage was one where the
+  /// nearby-devices list is shown ([HomeFlowStage.deviceSelectSend] or
+  /// [HomeFlowStage.confirmSend]) — a no-op call is harmless from any other
+  /// stage, so this is safe to call unconditionally from [reset]/[back].
+  void _maybeStopDiscovery() {
+    if (state.stage == HomeFlowStage.deviceSelectSend || state.stage == HomeFlowStage.confirmSend) {
+      unawaited(ref.read(fileDropServiceProvider).stopDiscovery());
     }
   }
 
@@ -328,6 +354,13 @@ class NearbyDevicesNotifier extends Notifier<Map<String, Device>> {
     });
     return const {};
   }
+
+  /// Clears stale entries from a previous discovery session. Called by
+  /// [HomeFlowNotifier] right before starting a fresh discovery pass, so
+  /// re-entering device selection never shows a device that stopped
+  /// advertising while discovery was off (no `DeviceDisconnected` event
+  /// fires in that case — the peer simply isn't re-broadcast to).
+  void clear() => state = const {};
 }
 
 final nearbyDevicesProvider = NotifierProvider<NearbyDevicesNotifier, Map<String, Device>>(
