@@ -71,10 +71,14 @@ make deploy    # build, then commit + push to main (see Makefile)
   Bloc. See `flutter/lib/providers/filedrop_providers.dart`.
 - **Theming**: the shared `theme` package
   (`/Users/ashvinijangid/Desktop/android/theme`, `its-ash/theme` on
-  GitHub) is the *only* source of `ThemeData` — `AppTheme.lightTheme()` /
-  `AppTheme.darkTheme()` in `flutter/lib/main.dart`. Do not add a
-  bespoke theme file; use the `ThemeX` component library
-  (`ThemeCard`, `ThemeEmptyState`, `ThemeSectionHeader`, etc.) for new UI.
+  GitHub) is the *only* source of `ThemeData` — `UiTheme.light()` /
+  `UiTheme.dark()` in `flutter/lib/main.dart`. Do not add a bespoke
+  theme file or local colors/typography; use the v2 `Ui*` widgets from
+  `package:theme/theme.dart` (`UiCard`, `UiEmptyState`, `UiErrorState`,
+  `UiSectionHeader`, `UiSpinner`, `UiBottomNav`, `UiSheet`, etc.) for new
+  UI, and read colors/text from `context.colors` (status colors via
+  `context.colors.tone(UiStatus.x)`) and `context.text`. See
+  `theme/COMPONENTS.md` for the full API.
 - **Chunked I/O only**: any code touching file bytes (`rust/filedrop-core/src/transfer/`)
   must stream in `CHUNK_SIZE` (1 MiB) pieces — never read/write a whole
   file into memory. This is load-bearing for large-file transfers.

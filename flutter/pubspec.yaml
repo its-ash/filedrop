@@ -12,7 +12,7 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # Shared design-system package (per project convention): provides
-  # AppTheme.lightTheme()/darkTheme() and the ThemeX component library.
+  # UiTheme.light()/dark() and the v2 Ui* component library.
   # Local path dependency for this scaffold pass — not published to pub.dev.
   theme:
     path: ../../theme

@@ -27,7 +27,8 @@ class ActiveTransfersList extends ConsumerWidget {
       padding: const EdgeInsets.all(16),
       itemCount: transfers.length,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, i) => _TransferCard(progress: transfers[i], service: service),
+      itemBuilder: (context, i) =>
+          _TransferCard(progress: transfers[i], service: service),
     );
   }
 }
@@ -40,14 +41,18 @@ class _TransferCard extends StatelessWidget {
 
   String _formatRate(double bytesPerSec) {
     if (bytesPerSec < 1024) return '${bytesPerSec.toStringAsFixed(0)} B/s';
-    if (bytesPerSec < 1024 * 1024) return '${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s';
+    if (bytesPerSec < 1024 * 1024) {
+      return '${(bytesPerSec / 1024).toStringAsFixed(1)} KB/s';
+    }
     return '${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} MB/s';
   }
 
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
@@ -67,63 +72,62 @@ class _TransferCard extends StatelessWidget {
     final isDone = progress.status == TransferStatus.completed;
     final isFailed = progress.status == TransferStatus.failed;
 
-    return ThemeCard(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(progress.fileName, style: AppTypography.titleMedium, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: progress.totalBytes == 0 ? null : progress.percent / 100,
-                minHeight: 8,
+    return UiCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            progress.fileName,
+            style: context.text.titleMedium,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 10),
+          UiProgressBar(
+            progress.totalBytes == 0 ? null : progress.percent / 100,
+            status: isFailed ? UiStatus.danger : UiStatus.accent,
+            height: 8,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${progress.percent.toStringAsFixed(0)}% · '
+                '${_formatBytes(progress.bytesTransferred)} / ${_formatBytes(progress.totalBytes)}',
+                style: context.text.bodyMedium,
               ),
-            ),
+              Text(
+                isDone
+                    ? 'Completed'
+                    : isFailed
+                    ? (progress.error ?? 'Failed')
+                    : '${_formatRate(progress.bytesPerSec)}${_formatEta(progress)}',
+                style: context.text.bodyMedium,
+              ),
+            ],
+          ),
+          if (!isDone && !isFailed) ...[
             const SizedBox(height: 8),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Text(
-                  '${progress.percent.toStringAsFixed(0)}% · '
-                  '${_formatBytes(progress.bytesTransferred)} / ${_formatBytes(progress.totalBytes)}',
-                  style: AppTypography.bodyMedium,
+                TextButton.icon(
+                  onPressed: () => isPaused
+                      ? service.resumeTransfer(progress.transferId)
+                      : service.pauseTransfer(progress.transferId),
+                  icon: Icon(isPaused ? Icons.play_arrow : Icons.pause),
+                  label: Text(isPaused ? 'Resume' : 'Pause'),
                 ),
-                Text(
-                  isDone
-                      ? 'Completed'
-                      : isFailed
-                          ? (progress.error ?? 'Failed')
-                          : '${_formatRate(progress.bytesPerSec)}${_formatEta(progress)}',
-                  style: AppTypography.bodyMedium,
+                TextButton.icon(
+                  onPressed: () => service.cancelTransfer(progress.transferId),
+                  icon: const Icon(Icons.close),
+                  label: const Text('Cancel'),
                 ),
               ],
             ),
-            if (!isDone && !isFailed) ...[
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: () => isPaused
-                        ? service.resumeTransfer(progress.transferId)
-                        : service.pauseTransfer(progress.transferId),
-                    icon: Icon(isPaused ? Icons.play_arrow : Icons.pause),
-                    label: Text(isPaused ? 'Resume' : 'Pause'),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => service.cancelTransfer(progress.transferId),
-                    icon: const Icon(Icons.close),
-                    label: const Text('Cancel'),
-                  ),
-                ],
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }

@@ -60,10 +60,10 @@ class TransferHistoryScreen extends ConsumerWidget {
             if (records.isEmpty) {
               return const SliverFillRemaining(
                 hasScrollBody: false,
-                child: ThemeEmptyState(
+                child: UiEmptyState(
                   icon: Icons.history,
                   title: 'No transfers yet',
-                  subtitle: 'Completed sends and receives will appear here.',
+                  message: 'Completed sends and receives will appear here.',
                 ),
               );
             }
@@ -87,7 +87,11 @@ class TransferHistoryScreen extends ConsumerWidget {
 }
 
 class _HistoryTile extends StatelessWidget {
-  const _HistoryTile({required this.record, required this.formatBytes, required this.formatAgo});
+  const _HistoryTile({
+    required this.record,
+    required this.formatBytes,
+    required this.formatAgo,
+  });
 
   final TransferRecord record;
   final String Function(int) formatBytes;
@@ -96,11 +100,13 @@ class _HistoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFailed = record.status == 'Failed';
-    return ThemeCard(
-      margin: EdgeInsets.zero,
+    return UiCard(
+      padding: EdgeInsets.zero,
       child: ListTile(
-        leading: Icon(record.outgoing ? Icons.arrow_upward : Icons.arrow_downward,
-            color: isFailed ? Theme.of(context).colorScheme.error : null),
+        leading: Icon(
+          record.outgoing ? Icons.arrow_upward : Icons.arrow_downward,
+          color: isFailed ? context.colors.danger : null,
+        ),
         title: Text(record.fileName, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           '${formatBytes(record.fileSizeBytes)} · ${record.peerName} · '

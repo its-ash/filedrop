@@ -82,31 +82,36 @@ class _IdleView extends ConsumerWidget {
             const SliverAppBar.large(title: Text('FileDrop')),
             SliverPadding(
               padding: const EdgeInsets.all(20),
-              sliver: SliverList.list(children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () => ref.read(homeFlowProvider.notifier).startSend(),
-                        icon: const Icon(Icons.upload_outlined),
-                        label: const Text('Send Files'),
+              sliver: SliverList.list(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () =>
+                              ref.read(homeFlowProvider.notifier).startSend(),
+                          icon: const Icon(Icons.upload_outlined),
+                          label: const Text('Send Files'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => ref.read(homeFlowProvider.notifier).startReceive(),
-                        icon: const Icon(Icons.download_outlined),
-                        label: const Text('Receive'),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => ref
+                              .read(homeFlowProvider.notifier)
+                              .startReceive(),
+                          icon: const Icon(Icons.download_outlined),
+                          label: const Text('Receive'),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 28),
-                const ThemeSectionHeader(title: 'Nearby Devices'),
-                const SizedBox(height: 8),
-                SizedBox(height: 240, child: _NearbyPreview()),
-              ]),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  const UiSectionHeader('Nearby Devices'),
+                  const SizedBox(height: 8),
+                  SizedBox(height: 240, child: _NearbyPreview()),
+                ],
+              ),
             ),
           ],
         ),
@@ -122,10 +127,10 @@ class _NearbyPreview extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final devices = ref.watch(nearbyDevicesProvider);
     if (devices.isEmpty) {
-      return const ThemeEmptyState(
+      return const UiEmptyState(
         icon: Icons.wifi_tethering,
         title: 'Searching for devices…',
-        subtitle: 'Make sure both devices are on the same Wi-Fi network.',
+        message: 'Make sure both devices are on the same Wi-Fi network.',
       );
     }
     return const NearbyDevicesBody();
@@ -145,10 +150,13 @@ class _FilePickerView extends ConsumerWidget {
       },
       child: Scaffold(
         appBar: AppBar(
-          leading: BackButton(onPressed: () => ref.read(homeFlowProvider.notifier).back()),
+          leading: BackButton(
+            onPressed: () => ref.read(homeFlowProvider.notifier).back(),
+          ),
         ),
         body: FilePickerBody(
-          onContinue: (paths) => ref.read(homeFlowProvider.notifier).filesPicked(paths),
+          onContinue: (paths) =>
+              ref.read(homeFlowProvider.notifier).filesPicked(paths),
         ),
       ),
     );
@@ -170,10 +178,13 @@ class _DeviceSelectSendView extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Nearby Devices'),
-          leading: BackButton(onPressed: () => ref.read(homeFlowProvider.notifier).back()),
+          leading: BackButton(
+            onPressed: () => ref.read(homeFlowProvider.notifier).back(),
+          ),
         ),
         body: NearbyDevicesBody(
-          onDeviceSelected: (device) => ref.read(homeFlowProvider.notifier).deviceSelected(device),
+          onDeviceSelected: (device) =>
+              ref.read(homeFlowProvider.notifier).deviceSelected(device),
         ),
       ),
     );
@@ -199,7 +210,9 @@ class _ConfirmSendView extends ConsumerWidget {
       },
       child: Scaffold(
         appBar: AppBar(
-          leading: BackButton(onPressed: () => ref.read(homeFlowProvider.notifier).back()),
+          leading: BackButton(
+            onPressed: () => ref.read(homeFlowProvider.notifier).back(),
+          ),
         ),
         body: device == null
             ? const SizedBox.shrink()
@@ -235,14 +248,20 @@ class _ReceiveModeView extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Receive'),
-          leading: BackButton(onPressed: () => ref.read(homeFlowProvider.notifier).back()),
+          leading: BackButton(
+            onPressed: () => ref.read(homeFlowProvider.notifier).back(),
+          ),
         ),
         body: switch (receive.stage) {
           ReceiveStage.checkingLan => const _CheckingLanBody(),
           ReceiveStage.noLanFound => const _CreateNetworkPromptBody(),
           ReceiveStage.creatingGroup => const _CreatingGroupBody(),
-          ReceiveStage.wifiDirectError => _WifiDirectErrorBody(message: receive.errorMessage),
-          ReceiveStage.waiting => _WaitingToReceiveBody(address: receive.address),
+          ReceiveStage.wifiDirectError => _WifiDirectErrorBody(
+            message: receive.errorMessage,
+          ),
+          ReceiveStage.waiting => _WaitingToReceiveBody(
+            address: receive.address,
+          ),
         },
       ),
     );
@@ -258,7 +277,7 @@ class _CheckingLanBody extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ThemeSpinner(type: ThemeSpinnerType.dualRing),
+          UiSpinner(size: 40),
           SizedBox(height: 20),
           Text('Checking your network…'),
         ],
@@ -278,30 +297,36 @@ class _CreateNetworkPromptBody extends ConsumerWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: ThemeCard(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.wifi_off_outlined, size: 56, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(height: 20),
-                const Text('No Wi-Fi network found', style: TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                const Text(
-                  'FileDrop couldn\'t find a shared Wi-Fi network to receive over. Create a '
-                  'temporary Wi-Fi Direct network so a nearby device can send you files '
-                  'directly, with no router needed.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: () => ref.read(homeFlowProvider.notifier).createWifiDirectGroup(),
-                  icon: const Icon(Icons.wifi_tethering),
-                  label: const Text('Create Network'),
-                ),
-              ],
-            ),
+        child: UiCard(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.wifi_off_outlined,
+                size: 56,
+                color: context.colors.accent,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'No Wi-Fi network found',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'FileDrop couldn\'t find a shared Wi-Fi network to receive over. Create a '
+                'temporary Wi-Fi Direct network so a nearby device can send you files '
+                'directly, with no router needed.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: () =>
+                    ref.read(homeFlowProvider.notifier).createWifiDirectGroup(),
+                icon: const Icon(Icons.wifi_tethering),
+                label: const Text('Create Network'),
+              ),
+            ],
           ),
         ),
       ),
@@ -318,7 +343,7 @@ class _CreatingGroupBody extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ThemeSpinner(type: ThemeSpinnerType.pulse),
+          UiSpinner(size: 40),
           SizedBox(height: 20),
           Text('Creating Wi-Fi Direct network…'),
         ],
@@ -334,9 +359,10 @@ class _WifiDirectErrorBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ThemeErrorState(
+    return UiErrorState(
       title: 'Couldn\'t create network',
-      subtitle: message ?? 'An unknown error occurred while setting up Wi-Fi Direct.',
+      message:
+          message ?? 'An unknown error occurred while setting up Wi-Fi Direct.',
       icon: Icons.wifi_tethering_error_rounded,
       onRetry: () => ref.read(homeFlowProvider.notifier).retryWifiDirect(),
     );
@@ -360,9 +386,12 @@ class _WaitingToReceiveBody extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ThemeSpinner(type: ThemeSpinnerType.ripple, size: 56),
+            const UiSpinner(size: 56),
             const SizedBox(height: 24),
-            const Text('Waiting for incoming files…', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text(
+              'Waiting for incoming files…',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 8),
             const Text(
               'Keep this screen open. You\'ll be prompted here when another device '
@@ -371,23 +400,30 @@ class _WaitingToReceiveBody extends StatelessWidget {
             ),
             if (address != null) ...[
               const SizedBox(height: 20),
-              ThemeCard(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.lan_outlined, size: 18),
-                      const SizedBox(width: 8),
-                      Text(address!, style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.copy_outlined, size: 18),
-                        tooltip: 'Copy address',
-                        onPressed: () => Clipboard.setData(ClipboardData(text: address!)),
+              UiCard(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lan_outlined, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      address!,
+                      style: const TextStyle(
+                        fontFeatures: [FontFeature.tabularFigures()],
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.copy_outlined, size: 18),
+                      tooltip: 'Copy address',
+                      onPressed: () =>
+                          Clipboard.setData(ClipboardData(text: address!)),
+                    ),
+                  ],
                 ),
               ),
             ],

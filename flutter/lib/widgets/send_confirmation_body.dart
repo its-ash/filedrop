@@ -24,7 +24,8 @@ class SendConfirmationBody extends ConsumerStatefulWidget {
   final VoidCallback onSent;
 
   @override
-  ConsumerState<SendConfirmationBody> createState() => _SendConfirmationBodyState();
+  ConsumerState<SendConfirmationBody> createState() =>
+      _SendConfirmationBodyState();
 }
 
 class _SendConfirmationBodyState extends ConsumerState<SendConfirmationBody> {
@@ -59,16 +60,16 @@ class _SendConfirmationBodyState extends ConsumerState<SendConfirmationBody> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Confirm Send', style: AppTypography.headlineSmall),
+          Text('Confirm Send', style: context.text.headlineSmall),
           const SizedBox(height: 16),
           Text(
             'Sending ${widget.filePaths.length} file'
             '${widget.filePaths.length == 1 ? '' : 's'} to:',
-            style: AppTypography.titleMedium,
+            style: context.text.titleMedium,
           ),
           const SizedBox(height: 16),
-          ThemeCard(
-            margin: EdgeInsets.zero,
+          UiCard(
+            padding: EdgeInsets.zero,
             child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.laptop_mac)),
               title: Text(widget.device.name),
@@ -89,7 +90,7 @@ class _SendConfirmationBodyState extends ConsumerState<SendConfirmationBody> {
             ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(_error!, style: TextStyle(color: context.colors.danger)),
           ],
           const SizedBox(height: 16),
           SizedBox(
@@ -98,7 +99,10 @@ class _SendConfirmationBodyState extends ConsumerState<SendConfirmationBody> {
               onPressed: _sending ? null : _send,
               icon: _sending
                   ? const SizedBox(
-                      width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.send),
               label: Text(_sending ? 'Sending…' : 'Send Now'),
             ),

@@ -45,7 +45,9 @@ class _FilePickerBodyState extends State<FilePickerBody> {
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
@@ -58,21 +60,24 @@ class _FilePickerBodyState extends State<FilePickerBody> {
           child: Row(
             children: [
               Expanded(
-                child: Text('Select Files', style: AppTypography.titleLarge),
+                child: Text('Select Files', style: context.text.titleLarge),
               ),
-              IconButton(icon: const Icon(Icons.add), tooltip: 'Add files', onPressed: _pickFiles),
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'Add files',
+                onPressed: _pickFiles,
+              ),
             ],
           ),
         ),
         Expanded(
           child: _selected.isEmpty
               ? Center(
-                  child: ThemeEmptyState(
+                  child: UiEmptyState(
                     icon: Icons.file_present_outlined,
                     title: 'No files selected',
-                    subtitle: 'Pick one or more files from this device to send.',
-                    actionLabel: 'Browse files',
-                    onAction: _pickFiles,
+                    message: 'Pick one or more files from this device to send.',
+                    action: UiButton('Browse files', onPressed: _pickFiles),
                   ),
                 )
               : ListView.separated(
@@ -81,15 +86,19 @@ class _FilePickerBodyState extends State<FilePickerBody> {
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final picked = _selected[index];
-                    return ThemeCard(
-                      margin: EdgeInsets.zero,
+                    return UiCard(
+                      padding: EdgeInsets.zero,
                       child: ListTile(
                         leading: const Icon(Icons.insert_drive_file_outlined),
-                        title: Text(picked.file.name, overflow: TextOverflow.ellipsis),
+                        title: Text(
+                          picked.file.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         subtitle: Text(_formatBytes(picked.sizeBytes)),
                         trailing: IconButton(
                           icon: const Icon(Icons.close),
-                          onPressed: () => setState(() => _selected.removeAt(index)),
+                          onPressed: () =>
+                              setState(() => _selected.removeAt(index)),
                         ),
                       ),
                     );
@@ -107,12 +116,13 @@ class _FilePickerBodyState extends State<FilePickerBody> {
                     child: Text(
                       '${_selected.length} file${_selected.length == 1 ? '' : 's'} selected '
                       '(${_formatBytes(_totalBytes)})',
-                      style: AppTypography.bodyMedium,
+                      style: context.text.bodyMedium,
                     ),
                   ),
                   FilledButton.icon(
-                    onPressed: () =>
-                        widget.onContinue(_selected.map((f) => f.file.path!).toList()),
+                    onPressed: () => widget.onContinue(
+                      _selected.map((f) => f.file.path!).toList(),
+                    ),
                     icon: const Icon(Icons.arrow_forward),
                     label: const Text('Continue'),
                   ),

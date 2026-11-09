@@ -15,7 +15,12 @@ import '../providers/filedrop_providers.dart';
 ///    informational while the user waits for an incoming request, which
 ///    surfaces separately as an overlay.
 class NearbyDevicesBody extends ConsumerWidget {
-  const NearbyDevicesBody({super.key, this.onDeviceSelected, this.emptyTitle, this.emptySubtitle});
+  const NearbyDevicesBody({
+    super.key,
+    this.onDeviceSelected,
+    this.emptyTitle,
+    this.emptySubtitle,
+  });
 
   final ValueChanged<Device>? onDeviceSelected;
   final String? emptyTitle;
@@ -27,10 +32,11 @@ class NearbyDevicesBody extends ConsumerWidget {
 
     if (devices.isEmpty) {
       return Center(
-        child: ThemeEmptyState(
+        child: UiEmptyState(
           icon: Icons.wifi_tethering,
           title: emptyTitle ?? 'No devices found yet',
-          subtitle: emptySubtitle ??
+          message:
+              emptySubtitle ??
               'FileDrop is broadcasting on your LAN via mDNS. Make sure the '
                   'other device also has FileDrop open.',
         ),
@@ -54,18 +60,18 @@ class _DeviceTile extends StatelessWidget {
   final ValueChanged<Device>? onTap;
 
   IconData get _platformIcon => switch (device.platform) {
-        'android' => Icons.phone_android,
-        'ios' => Icons.phone_iphone,
-        'macos' => Icons.laptop_mac,
-        'windows' => Icons.laptop_windows,
-        'linux' => Icons.computer,
-        _ => Icons.devices_other,
-      };
+    'android' => Icons.phone_android,
+    'ios' => Icons.phone_iphone,
+    'macos' => Icons.laptop_mac,
+    'windows' => Icons.laptop_windows,
+    'linux' => Icons.computer,
+    _ => Icons.devices_other,
+  };
 
   @override
   Widget build(BuildContext context) {
-    return ThemeCard(
-      margin: EdgeInsets.zero,
+    return UiCard(
+      padding: EdgeInsets.zero,
       child: ListTile(
         leading: CircleAvatar(child: Icon(_platformIcon)),
         title: Text(device.name),

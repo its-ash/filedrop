@@ -24,8 +24,8 @@ class FileDropApp extends StatelessWidget {
     return MaterialApp(
       title: 'FileDrop',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme(),
-      darkTheme: AppTheme.darkTheme(),
+      theme: UiTheme.light(),
+      darkTheme: UiTheme.dark(),
       themeMode: ThemeMode.system,
       navigatorKey: _rootNavigatorKey,
       home: const _FileDropStartup(),
@@ -52,7 +52,10 @@ class _FileDropStartupState extends ConsumerState<_FileDropStartup> {
   Future<void> _init() async {
     final service = ref.read(fileDropServiceProvider);
     final appDataDir = await getApplicationSupportDirectory();
-    await service.init(deviceName: _defaultDeviceName(), appDataDir: appDataDir.path);
+    await service.init(
+      deviceName: _defaultDeviceName(),
+      appDataDir: appDataDir.path,
+    );
     await service.startServer();
   }
 
@@ -70,7 +73,9 @@ class _FileDropStartupState extends ConsumerState<_FileDropStartup> {
       future: _initFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasError) {
           return Scaffold(
@@ -111,19 +116,19 @@ class _AppShellState extends ConsumerState<_AppShell> {
   int _tabIndex = 0;
   bool _sheetOpen = false;
 
-  static const _tabs = [HomeScreen(), TransferHistoryScreen(), SettingsScreen()];
+  static const _tabs = [
+    HomeScreen(),
+    TransferHistoryScreen(),
+    SettingsScreen(),
+  ];
 
   static const _destinations = [
-    ThemeNavigationDestinationItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
-    ThemeNavigationDestinationItem(
-      icon: Icons.history_outlined,
-      selectedIcon: Icons.history,
-      label: 'History',
-    ),
-    ThemeNavigationDestinationItem(
-      icon: Icons.settings_outlined,
+    UiNavItem(Icons.home_outlined, 'Home', selectedIcon: Icons.home),
+    UiNavItem(Icons.history_outlined, 'History', selectedIcon: Icons.history),
+    UiNavItem(
+      Icons.settings_outlined,
+      'Settings',
       selectedIcon: Icons.settings,
-      label: 'Settings',
     ),
   ];
 
@@ -133,10 +138,10 @@ class _AppShellState extends ConsumerState<_AppShell> {
       if (next.isNotEmpty && !_sheetOpen) {
         final request = next.first;
         _sheetOpen = true;
-        ThemeBottomSheet.show(
+        UiSheet.show<void>(
           context,
-          isScrollControlled: true,
-          builder: (_) => IncomingTransferSheet(request: request),
+          padding: EdgeInsets.zero,
+          child: IncomingTransferSheet(request: request),
         ).whenComplete(() {
           _sheetOpen = false;
           // Guard against the user dismissing the sheet (tap outside /
@@ -150,10 +155,10 @@ class _AppShellState extends ConsumerState<_AppShell> {
 
     return Scaffold(
       body: IndexedStack(index: _tabIndex, children: _tabs),
-      bottomNavigationBar: ThemeNavigationBar(
-        selectedIndex: _tabIndex,
-        onDestinationSelected: (i) => setState(() => _tabIndex = i),
-        destinations: _destinations,
+      bottomNavigationBar: UiBottomNav(
+        items: _destinations,
+        index: _tabIndex,
+        onChanged: (i) => setState(() => _tabIndex = i),
       ),
     );
   }

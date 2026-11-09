@@ -45,95 +45,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SliverAppBar.large(title: Text('Settings')),
         SliverPadding(
           padding: const EdgeInsets.all(20),
-          sliver: SliverList.list(children: [
-            ThemeCard(
-              margin: EdgeInsets.zero,
-              child: Column(
-                children: const [
-                  ListTile(
-                    leading: Icon(Icons.badge_outlined),
-                    title: Text('Device Name'),
-                    subtitle: Text('This device\'s name as shown to peers'),
-                  ),
-                  Divider(height: 1),
-                  ListTile(
-                    leading: Icon(Icons.folder_outlined),
-                    title: Text('Save Location'),
-                    subtitle: Text('Where received files are stored'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            const ThemeSectionHeader(
-              title: 'Network',
-              subtitle: 'LAN discovery and direct-connect mode',
-            ),
-            const SizedBox(height: 8),
-            ThemeCard(
-              margin: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  RadioGroup<_NetworkMode>(
-                    groupValue: _mode,
-                    onChanged: (v) => setState(() => _mode = v!),
-                    child: const Column(
-                      children: [
-                        RadioListTile<_NetworkMode>(
-                          value: _NetworkMode.existingLan,
-                          title: Text('Existing LAN'),
-                          subtitle: Text('mDNS/DNS-SD discovery with UDP broadcast fallback.'),
-                        ),
-                        RadioListTile<_NetworkMode>(
-                          value: _NetworkMode.noRouter,
-                          title: Text('No router (direct connect)'),
-                          subtitle: Text('Wi-Fi Direct / local-only hotspot between two devices.'),
-                        ),
-                      ],
+          sliver: SliverList.list(
+            children: [
+              UiCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: const [
+                    ListTile(
+                      leading: Icon(Icons.badge_outlined),
+                      title: Text('Device Name'),
+                      subtitle: Text('This device\'s name as shown to peers'),
                     ),
-                  ),
-                  if (_mode == _NetworkMode.noRouter)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    UiDivider(),
+                    ListTile(
+                      leading: Icon(Icons.folder_outlined),
+                      title: Text('Save Location'),
+                      subtitle: Text('Where received files are stored'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              const UiSectionHeader(
+                'Network',
+                subtitle: 'LAN discovery and direct-connect mode',
+              ),
+              const SizedBox(height: 8),
+              UiCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    RadioGroup<_NetworkMode>(
+                      groupValue: _mode,
+                      onChanged: (v) => setState(() => _mode = v!),
+                      child: const Column(
                         children: [
-                          Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(_directConnectNote, style: AppTypography.bodyMedium),
+                          RadioListTile<_NetworkMode>(
+                            value: _NetworkMode.existingLan,
+                            title: Text('Existing LAN'),
+                            subtitle: Text(
+                              'mDNS/DNS-SD discovery with UDP broadcast fallback.',
+                            ),
+                          ),
+                          RadioListTile<_NetworkMode>(
+                            value: _NetworkMode.noRouter,
+                            title: Text('No router (direct connect)'),
+                            subtitle: Text(
+                              'Wi-Fi Direct / local-only hotspot between two devices.',
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.devices),
-                    title: const Text('Platform'),
-                    subtitle: const Text(_platformName),
+                    if (_mode == _NetworkMode.noRouter)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: context.colors.accent,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _directConnectNote,
+                                style: context.text.bodyMedium,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const UiDivider(),
+                    ListTile(
+                      leading: const Icon(Icons.devices),
+                      title: const Text('Platform'),
+                      subtitle: const Text(_platformName),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              UiCard(
+                padding: EdgeInsets.zero,
+                child: ListTile(
+                  leading: Icon(
+                    Icons.delete_outline,
+                    color: context.colors.danger,
                   ),
-                ],
+                  title: Text(
+                    'Clear History',
+                    style: TextStyle(color: context.colors.danger),
+                  ),
+                  onTap: () {},
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            ThemeCard(
-              margin: EdgeInsets.zero,
-              child: ListTile(
-                leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
-                title: Text('Clear History', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                onTap: () {},
+              const SizedBox(height: 20),
+              const UiCard(
+                padding: EdgeInsets.zero,
+                child: ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text('About FileDrop'),
+                  subtitle: Text('v0.1.0 · Local-first, no cloud, no accounts'),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            const ThemeCard(
-              margin: EdgeInsets.zero,
-              child: ListTile(
-                leading: Icon(Icons.info_outline),
-                title: Text('About FileDrop'),
-                subtitle: Text('v0.1.0 · Local-first, no cloud, no accounts'),
-              ),
-            ),
-          ]),
+            ],
+          ),
         ),
       ],
     );

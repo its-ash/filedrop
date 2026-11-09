@@ -6,7 +6,7 @@ import '../models/events.dart';
 import '../providers/filedrop_providers.dart';
 
 /// Content of the incoming-transfer overlay, extracted from the old
-/// `incoming_transfer_screen.dart`. Shown via [ThemeBottomSheet.show] from
+/// `incoming_transfer_screen.dart`. Shown via [UiSheet.show] from
 /// the app shell (`main.dart`) on top of whatever tab is active, rather
 /// than pushed as a full-screen route — see `main.dart` for the
 /// `ref.listen(pairingRequestsProvider, ...)` trigger.
@@ -30,13 +30,13 @@ class IncomingTransferSheet extends ConsumerWidget {
             Text(
               '${request.deviceName} wants to send you files',
               textAlign: TextAlign.center,
-              style: AppTypography.titleMedium,
+              style: context.text.titleMedium,
             ),
             const SizedBox(height: 8),
             Text(
               'Pairing token: ${request.token.substring(0, 8)}…',
-              style: AppTypography.bodyMedium.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              style: context.text.bodyMedium?.copyWith(
+                color: context.colors.textMuted,
               ),
             ),
             const SizedBox(height: 28),
@@ -46,7 +46,9 @@ class IncomingTransferSheet extends ConsumerWidget {
                   child: OutlinedButton.icon(
                     onPressed: () async {
                       final navigator = Navigator.of(context);
-                      ref.read(pairingRequestsProvider.notifier).dismiss(request.deviceId);
+                      ref
+                          .read(pairingRequestsProvider.notifier)
+                          .dismiss(request.deviceId);
                       await service.rejectTransfer(request.deviceId);
                       if (navigator.mounted) navigator.pop();
                     },
@@ -59,7 +61,9 @@ class IncomingTransferSheet extends ConsumerWidget {
                   child: FilledButton.icon(
                     onPressed: () async {
                       final navigator = Navigator.of(context);
-                      ref.read(pairingRequestsProvider.notifier).dismiss(request.deviceId);
+                      ref
+                          .read(pairingRequestsProvider.notifier)
+                          .dismiss(request.deviceId);
                       await service.acceptTransfer(request.deviceId);
                       if (navigator.mounted) navigator.pop();
                     },
