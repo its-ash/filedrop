@@ -1,0 +1,8 @@
+# Launcher icon config. Source art: assets/icon/logo.svg
+# Regenerate: dart pub global activate flutter_launcher_icons && dart pub global run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/logo-1024.png"
+  adaptive_icon_background: "#F0529C"
+  adaptive_icon_foreground: "assets/icon/logo_foreground-1024.png"
