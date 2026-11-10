@@ -64,3 +64,4 @@ flutter/web/
 # --- flutter_rust_bridge generated output (regenerate via codegen, don't commit) ---
 flutter/lib/src/rust/
 rust/filedrop-ffi/src/frb_generated.rs
+dist/
