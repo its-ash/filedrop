@@ -60,7 +60,7 @@ store-check:
 	@test -f index.html || echo "warning: no index.html landing page at the repo root"
 	@test -f CNAME || echo "warning: no CNAME; the landing page will use the github.io URL"
 	@gh auth status >/dev/null 2>&1 || { echo "Run: gh auth login"; exit 1; }
-	@[ "$$(git rev-parse --abbrev-ref HEAD)" = "main" ] || { echo "Deploy from main (now on $$(git rev-parse --abbrev-ref HEAD))."; exit 1; }
+	@[ "$$(git symbolic-ref --short HEAD)" = "main" ] || { echo "Deploy from main (now on $$(git symbolic-ref --short HEAD))."; exit 1; }
 	@echo "== store-check ok: $(STORE_NAME) ($(STORE_REPO))"
 
 release: $(RELEASE_DEPS)

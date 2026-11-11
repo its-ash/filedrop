@@ -147,9 +147,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: ListTile(
                   leading: Icon(Icons.info_outline),
                   title: Text('About FileDrop'),
-                  subtitle: Text('v0.1.0 · Local-first, no cloud, no accounts'),
+                  subtitle: Text('Local-first, no cloud, no accounts'),
                 ),
               ),
+              const SizedBox(height: 20),
+              // No INTERNET permission in the main manifest: the row opens the
+              // latest APK download in the browser.
+              const UiUpdateSection(storeId: 'filedrop', checkForUpdates: false),
+              const SizedBox(height: 20),
+              const UiDeveloperSection(),
             ],
           ),
         ),
