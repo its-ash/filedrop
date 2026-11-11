@@ -151,6 +151,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 20),
+              const UiAppearanceSection(),
+              const SizedBox(height: 20),
               // No INTERNET permission in the main manifest: the row opens the
               // latest APK download in the browser.
               const UiUpdateSection(storeId: 'filedrop', checkForUpdates: false),

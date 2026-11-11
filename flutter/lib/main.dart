@@ -21,12 +21,8 @@ class FileDropApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return UiApp(
       title: 'FileDrop',
-      debugShowCheckedModeBanner: false,
-      theme: UiTheme.light(),
-      darkTheme: UiTheme.dark(),
-      themeMode: ThemeMode.system,
       navigatorKey: _rootNavigatorKey,
       home: const _FileDropStartup(),
     );
