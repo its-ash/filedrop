@@ -6,6 +6,6 @@
   "tagline": "Send files to nearby phones without the internet.",
   "description": "FileDrop moves files straight between nearby Android devices over Wi-Fi. Devices on the same network find each other by themselves; with no network, FileDrop sets up a direct Wi-Fi Direct link. Transfers stream from disk, resume if interrupted and are checked with SHA-256. No cloud, no account.",
   "category": "Tools",
-  "icon": "flutter/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+  "icon": "flutter/assets/icon/logo-1024.png",
   "homepage": "https://filedrop.itsash.in/"
 }
