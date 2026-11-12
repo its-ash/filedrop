@@ -9,10 +9,9 @@
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <!-- Android 13+ (API 33) replacement for ACCESS_FINE_LOCATION when the
          app does not derive physical location from Wi-Fi scan results.
-         neverForLocation is correct here: this app never calls
-         discoverPeers()/scanning APIs, only createGroup()/
-         requestConnectionInfo()/removeGroup(), none of which read peer
-         physical position — see WifiDirectHandler.kt. -->
+         neverForLocation is correct here: the app never derives physical
+         location from peers; it uses discoverPeers()/connect() only to join
+         a nearby FileDrop receiver — see WifiDirectHandler.kt. -->
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />

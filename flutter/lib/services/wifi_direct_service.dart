@@ -55,6 +55,38 @@ class WifiDirectService {
     }
   }
 
+  /// Sender side: searches for a nearby device in receive mode, connects
+  /// and returns the group owner address once the direct link is up.
+  Future<String> joinNearbyGroup() async {
+    try {
+      final address = await _channel.invokeMethod<String>('joinNearbyGroup');
+      if (address == null || address.isEmpty) {
+        throw const WifiDirectException('No Wi-Fi Direct address was returned.');
+      }
+      return address;
+    } on PlatformException catch (e) {
+      throw WifiDirectException(_messageFor(e), code: e.code);
+    }
+  }
+
+  /// Whether the Wi-Fi radio is on.
+  Future<bool> isWifiEnabled() async {
+    try {
+      return await _channel.invokeMethod<bool>('isWifiEnabled') ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Opens the system Wi-Fi panel (Android 10+ apps cannot toggle Wi-Fi).
+  Future<void> openWifiPanel() async {
+    try {
+      await _channel.invokeMethod<void>('openWifiPanel');
+    } on PlatformException {
+      // Nothing more the app can do; the user can open Settings manually.
+    }
+  }
+
   String _messageFor(PlatformException e) {
     return switch (e.code) {
       'WIFI_DISABLED' => 'Wi-Fi is turned off. Turn on Wi-Fi and try again.',
@@ -63,6 +95,8 @@ class WifiDirectService {
       'P2P_UNSUPPORTED' => 'This device does not support Wi-Fi Direct.',
       'BUSY' => 'Wi-Fi Direct is busy. Try again in a moment.',
       'NO_GROUP_INFO' => 'Could not determine the Wi-Fi Direct group address.',
+      'NO_PEERS' =>
+        'No nearby device in receive mode was found. Ask the other person to open Receive.',
       _ => e.message ?? 'Wi-Fi Direct request failed (${e.code}).',
     };
   }

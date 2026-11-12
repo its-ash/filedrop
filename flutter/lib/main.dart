@@ -5,8 +5,6 @@ import 'package:theme/theme.dart';
 
 import 'providers/filedrop_providers.dart';
 import 'screens/home_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/transfer_history_screen.dart';
 import 'widgets/incoming_transfer_sheet.dart';
 
 void main() {
@@ -31,7 +29,7 @@ class FileDropApp extends StatelessWidget {
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-/// Initializes the Rust engine + local server on first frame, then shows
+/// Initializes the Rust engine (no server) on first frame, then shows
 /// the [_AppShell]. Also listens for [PairingRequestedEvent]s for the
 /// lifetime of the app and shows [IncomingTransferSheet] as an overlay
 /// when one arrives, regardless of which tab is currently active.
@@ -52,7 +50,8 @@ class _FileDropStartupState extends ConsumerState<_FileDropStartup> {
       deviceName: _defaultDeviceName(),
       appDataDir: appDataDir.path,
     );
-    await service.startServer();
+    // No server, discovery or Wi-Fi Direct work here: it starts only when
+    // the user picks Send or Receive on the home screen.
   }
 
   String _defaultDeviceName() {
@@ -92,15 +91,10 @@ class _FileDropStartupState extends ConsumerState<_FileDropStartup> {
   }
 }
 
-/// The 3-tab bottom-navigation shell: Home / History / Settings, switched
-/// via an [IndexedStack] so each tab keeps its scroll position and state
-/// (e.g. the Home tab's in-flight Send/Receive flow) when the user
-/// switches away and back.
-///
-/// Also owns the app-wide incoming-transfer overlay: listens to
+/// The app shell: the [HomeScreen] (Settings and History open from its app
+/// bar) plus the app-wide incoming-transfer overlay: listens to
 /// [pairingRequestsProvider] and shows [IncomingTransferSheet] as a
-/// themed bottom sheet on top of whatever tab is active, so it works
-/// regardless of navigation state within a tab.
+/// themed bottom sheet on top of whatever is on screen.
 class _AppShell extends ConsumerStatefulWidget {
   const _AppShell();
 
@@ -109,24 +103,7 @@ class _AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<_AppShell> {
-  int _tabIndex = 0;
   bool _sheetOpen = false;
-
-  static const _tabs = [
-    HomeScreen(),
-    TransferHistoryScreen(),
-    SettingsScreen(),
-  ];
-
-  static const _destinations = [
-    UiNavItem(Icons.home_outlined, 'Home', selectedIcon: Icons.home),
-    UiNavItem(Icons.history_outlined, 'History', selectedIcon: Icons.history),
-    UiNavItem(
-      Icons.settings_outlined,
-      'Settings',
-      selectedIcon: Icons.settings,
-    ),
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -149,13 +126,6 @@ class _AppShellState extends ConsumerState<_AppShell> {
       }
     });
 
-    return Scaffold(
-      body: IndexedStack(index: _tabIndex, children: _tabs),
-      bottomNavigationBar: UiBottomNav(
-        items: _destinations,
-        index: _tabIndex,
-        onChanged: (i) => setState(() => _tabIndex = i),
-      ),
-    );
+    return const HomeScreen();
   }
 }

@@ -9,53 +9,63 @@ import '../models/transfer.dart';
 import '../services/filedrop_ffi_service.dart';
 import '../services/wifi_direct_service.dart';
 
-/// Which step of the Home tab's Send/Receive flow is currently shown.
+/// Which step of the Home flow is currently shown.
 ///
-/// This only governs the flow *when there is no active transfer* — the
-/// active-transfer view (state 1 in the Home screen's priority order)
-/// always wins regardless of [HomeFlowStage], per the Home tab state
-/// machine spec.
+/// Nothing network-related (discovery, server, Wi-Fi Direct) runs in
+/// [idle] or [filePicker]; it starts only once the user has picked Send
+/// (after choosing files) or Receive, and stops when they leave.
+/// The active-transfer view always wins over the stage.
 enum HomeFlowStage {
-  /// Send/Receive choice buttons.
+  /// Two big choices: Send or Receive.
   idle,
 
   /// Picking local files to send.
   filePicker,
 
-  /// Picking which nearby device to send the already-picked files to.
+  /// Files picked: the transport is detected automatically ([SendLink]),
+  /// then nearby devices are listed.
   deviceSelectSend,
 
-  /// Reviewing the picked files + destination device before dispatching
-  /// `sendFiles`.
+  /// Reviewing the picked files + destination device before sending.
   confirmSend,
 
-  /// Receive mode: see [ReceiveStage] for the sub-flow (LAN check,
-  /// Create Network prompt, Wi-Fi Direct group creation, waiting to
-  /// receive). Incoming pairing/transfer requests are surfaced separately
-  /// via the [pairingRequestsProvider]-driven overlay, not by navigating
-  /// away from this stage.
+  /// Receive mode, see [ReceiveStage].
   receiveMode,
 }
 
-/// Sub-state of [HomeFlowStage.receiveMode], driving which view
-/// `_ReceiveModeView` in `home_screen.dart` renders.
+/// How files travel: over the shared Wi-Fi network, or phone to phone.
+enum TransferTransport { wifi, direct }
+
+/// Sub-state of the send link set-up (stage [HomeFlowStage.deviceSelectSend]).
+enum SendLinkStage {
+  /// Detecting Wi-Fi / connecting.
+  checking,
+
+  /// Wi-Fi radio is off and no network is available: ask the user to turn it on.
+  needWifi,
+
+  /// Link is up and device discovery is running.
+  ready,
+
+  /// Direct connection failed.
+  error,
+}
+
+/// Sub-state of [HomeFlowStage.receiveMode].
 enum ReceiveStage {
-  /// [check_usable_lan] is in flight.
+  /// Detecting Wi-Fi.
   checkingLan,
 
-  /// No usable LAN interface was found; show the "Create Network" prompt
-  /// (a Wi-Fi Direct group is the way to get one).
-  noLanFound,
+  /// Wi-Fi radio is off: ask the user to turn it on (system panel).
+  needWifi,
 
-  /// Permission request + [WifiDirectService.createGroup] is in flight.
+  /// Creating the Wi-Fi Direct group (no Wi-Fi network).
   creatingGroup,
 
-  /// [WifiDirectService.createGroup] failed; show the error with a Retry
-  /// button back to [noLanFound].
+  /// Wi-Fi Direct group creation failed.
   wifiDirectError,
 
-  /// A usable IP (LAN or freshly-created Wi-Fi Direct group) is known and
-  /// the transfer server is up — show the waiting-for-incoming-files view.
+  /// Server is up and advertised; waiting for a sender.
   waiting,
 }
 
@@ -63,233 +73,337 @@ enum ReceiveStage {
 class ReceiveState {
   final ReceiveStage stage;
 
-  /// The IP other devices should connect to, once known (LAN address or
-  /// Wi-Fi Direct group owner address).
+  /// The IP other devices should connect to, once known.
   final String? address;
 
-  /// Error message from a failed [WifiDirectService.createGroup] call,
-  /// set only while [stage] is [ReceiveStage.wifiDirectError].
   final String? errorMessage;
 
-  /// Whether a Wi-Fi Direct group was created this session, so
-  /// [HomeFlowNotifier.reset]/[HomeFlowNotifier.back] know whether calling
-  /// `removeGroup()` is meaningful.
-  final bool groupCreated;
+  /// Transport in use (set once known).
+  final TransferTransport? transport;
 
   const ReceiveState({
     this.stage = ReceiveStage.checkingLan,
     this.address,
     this.errorMessage,
-    this.groupCreated = false,
+    this.transport,
   });
 
   ReceiveState copyWith({
     ReceiveStage? stage,
     String? address,
     String? errorMessage,
-    bool? groupCreated,
+    TransferTransport? transport,
     bool clearError = false,
   }) =>
       ReceiveState(
         stage: stage ?? this.stage,
         address: address ?? this.address,
         errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-        groupCreated: groupCreated ?? this.groupCreated,
+        transport: transport ?? this.transport,
       );
 }
 
-/// Drives the Home tab's flow stage plus the file/device selections made
-/// along the way, so the state survives tab switches and can be read from
-/// wherever `home_screen.dart` needs it.
+/// Send link snapshot: which transport was picked and how set-up is going.
+class SendLink {
+  final SendLinkStage stage;
+  final TransferTransport? transport;
+  final String? errorMessage;
+
+  const SendLink({
+    this.stage = SendLinkStage.checking,
+    this.transport,
+    this.errorMessage,
+  });
+
+  SendLink copyWith({
+    SendLinkStage? stage,
+    TransferTransport? transport,
+    String? errorMessage,
+    bool clearError = false,
+  }) =>
+      SendLink(
+        stage: stage ?? this.stage,
+        transport: transport ?? this.transport,
+        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      );
+}
+
+/// Drives the Home flow plus the selections made along the way.
 class HomeFlowNotifier extends Notifier<HomeFlowState> {
+  /// Whether this session joined/created a Wi-Fi Direct group that must be
+  /// removed when the flow is left.
+  bool _directActive = false;
+
+  /// Bumped on every teardown so late async results from a previous
+  /// attempt are ignored.
+  int _generation = 0;
+
   @override
   HomeFlowState build() => const HomeFlowState();
 
-  void startSend() => state = state.copyWith(stage: HomeFlowStage.filePicker, clearFiles: true);
+  FileDropFfiService get _service => ref.read(fileDropServiceProvider);
 
-  /// Enters receive mode and kicks off the LAN check. See
-  /// `_ReceiveModeView` in `home_screen.dart` for the resulting UI per
-  /// [ReceiveStage].
-  Future<void> startReceive() async {
-    state = state.copyWith(
-      stage: HomeFlowStage.receiveMode,
-      receive: const ReceiveState(),
-    );
-    await _checkLanAndMaybeWait();
+  void startSend() {
+    _teardown();
+    state = const HomeFlowState(stage: HomeFlowStage.filePicker);
   }
 
-  Future<void> _checkLanAndMaybeWait() async {
-    final service = ref.read(fileDropServiceProvider);
+  /// Receive: if on Wi-Fi, start the server on the LAN; otherwise use
+  /// Wi-Fi Direct (asking the user to turn the Wi-Fi radio on if needed).
+  Future<void> startReceive() async {
+    _teardown();
+    state = const HomeFlowState(stage: HomeFlowStage.receiveMode);
+    await _prepareReceive(_generation);
+  }
+
+  bool _receiving(int gen) =>
+      gen == _generation && state.stage == HomeFlowStage.receiveMode;
+
+  void _setReceive(ReceiveState Function(ReceiveState) f) =>
+      state = state.copyWith(receive: f(state.receive));
+
+  Future<void> _prepareReceive(int gen) async {
+    _setReceive((r) => const ReceiveState());
     String? ip;
     try {
-      ip = await service.checkUsableLan();
+      ip = await _service.checkUsableLan();
     } catch (_) {
       ip = null;
     }
+    if (!_receiving(gen)) return;
 
-    if (state.stage != HomeFlowStage.receiveMode) return; // user navigated away meanwhile
-
-    if (ip == null) {
-      state = state.copyWith(receive: state.receive.copyWith(stage: ReceiveStage.noLanFound));
+    if (ip != null) {
+      await _startServerAndWait(gen, ip, TransferTransport.wifi);
       return;
     }
 
-    await _startServerAndEnterWaiting(ip);
-  }
-
-  Future<void> _startServerAndEnterWaiting(String address) async {
-    final service = ref.read(fileDropServiceProvider);
-    try {
-      await service.ensureServerRunning();
-    } catch (_) {
-      // start_server failing is a genuine engine problem, not a
-      // Wi-Fi-Direct-specific one; fall back to showing the address we do
-      // have rather than hanging indefinitely on the checking state.
+    if (!await WifiDirectService.instance.isWifiEnabled()) {
+      if (!_receiving(gen)) return;
+      _setReceive((r) => r.copyWith(stage: ReceiveStage.needWifi));
+      return;
     }
+    await _createDirectGroup(gen);
+  }
 
-    if (state.stage != HomeFlowStage.receiveMode) return;
-    state = state.copyWith(
-      receive: state.receive.copyWith(stage: ReceiveStage.waiting, address: address),
+  Future<void> _startServerAndWait(
+    int gen,
+    String address,
+    TransferTransport transport,
+  ) async {
+    try {
+      await _service.ensureServerRunning();
+      if (!_receiving(gen)) return;
+      // Advertise this device so a sender's discovery can find it.
+      await _service.startDiscovery(_service.selfDevice);
+    } catch (_) {
+      // Engine problem: still show the address we have.
+    }
+    if (!_receiving(gen)) return;
+    _setReceive(
+      (r) => r.copyWith(
+        stage: ReceiveStage.waiting,
+        address: address,
+        transport: transport,
+      ),
     );
   }
 
-  /// "Create Network" button: requests the SDK-appropriate runtime
-  /// permission, then creates a Wi-Fi Direct group.
-  Future<void> createWifiDirectGroup() async {
-    state = state.copyWith(
-      receive: state.receive.copyWith(stage: ReceiveStage.creatingGroup, clearError: true),
-    );
-
+  Future<void> _createDirectGroup(int gen) async {
+    _setReceive((r) => r.copyWith(stage: ReceiveStage.creatingGroup, clearError: true));
     try {
-      final granted = await _requestWifiDirectPermission();
-      if (!granted) {
-        state = state.copyWith(
-          receive: state.receive.copyWith(
+      if (!await _requestWifiDirectPermission()) {
+        if (!_receiving(gen)) return;
+        _setReceive(
+          (r) => r.copyWith(
             stage: ReceiveStage.wifiDirectError,
-            errorMessage: 'Permission was not granted, so a Wi-Fi Direct network '
-                'cannot be created.',
+            errorMessage: 'Permission was not granted, so a Wi-Fi Direct '
+                'connection cannot be started.',
           ),
         );
         return;
       }
-
       final address = await WifiDirectService.instance.createGroup();
-      if (state.stage != HomeFlowStage.receiveMode) return;
-
-      state = state.copyWith(receive: state.receive.copyWith(groupCreated: true));
-      await _startServerAndEnterWaiting(address);
+      _directActive = true;
+      if (!_receiving(gen)) {
+        _teardown();
+        return;
+      }
+      await _startServerAndWait(gen, address, TransferTransport.direct);
     } on WifiDirectException catch (e) {
-      if (state.stage != HomeFlowStage.receiveMode) return;
-      state = state.copyWith(
-        receive: state.receive.copyWith(stage: ReceiveStage.wifiDirectError, errorMessage: e.message),
+      if (!_receiving(gen)) return;
+      _setReceive(
+        (r) => r.copyWith(stage: ReceiveStage.wifiDirectError, errorMessage: e.message),
       );
     } catch (e) {
-      if (state.stage != HomeFlowStage.receiveMode) return;
-      state = state.copyWith(
-        receive: state.receive.copyWith(
+      if (!_receiving(gen)) return;
+      _setReceive(
+        (r) => r.copyWith(
           stage: ReceiveStage.wifiDirectError,
-          errorMessage: 'Could not create a Wi-Fi Direct network: $e',
+          errorMessage: 'Could not start a Wi-Fi Direct connection: $e',
         ),
       );
     }
   }
 
-  /// Retries from the error state back to the Create Network prompt.
-  void retryWifiDirect() {
-    state = state.copyWith(
-      receive: state.receive.copyWith(stage: ReceiveStage.noLanFound, clearError: true),
-    );
+  /// Opens the system Wi-Fi panel (Android 10+ cannot toggle Wi-Fi).
+  Future<void> openWifiPanel() => WifiDirectService.instance.openWifiPanel();
+
+  /// Re-runs transport detection for whichever flow is active.
+  Future<void> retry() {
+    if (state.stage == HomeFlowStage.receiveMode) {
+      _generation++;
+      return _prepareReceive(_generation);
+    }
+    if (state.stage == HomeFlowStage.deviceSelectSend) {
+      _generation++;
+      return _prepareSend(_generation);
+    }
+    return Future.value();
   }
 
-  /// Android 13+ (API 33) requires `NEARBY_WIFI_DEVICES`; older versions
-  /// require `ACCESS_FINE_LOCATION` for any Wi-Fi P2P API. `permission_handler`
-  /// resolves the right underlying platform permission for the running
-  /// device's SDK level via [Permission.nearbyWifiDevices]/[Permission.locationWhenInUse]
-  /// respectively — request both in sequence and treat either being
-  /// granted (the one actually applicable to this OS version) as success,
-  /// since a denial of the inapplicable one on old/new OS is reported as
-  /// `PermissionStatus.granted` by the plugin already (it only asks for
-  /// what the platform actually needs).
+  /// Android 13+ needs `NEARBY_WIFI_DEVICES`; older versions need location.
   Future<bool> _requestWifiDirectPermission() async {
     final nearbyStatus = await Permission.nearbyWifiDevices.request();
     if (nearbyStatus.isGranted) return true;
-
     final locationStatus = await Permission.locationWhenInUse.request();
     return locationStatus.isGranted;
   }
 
-  /// Nearby devices are only ever discovered starting at this step: the
-  /// Home tab's Send flow shows no device list during [HomeFlowStage.idle]
-  /// or [HomeFlowStage.filePicker], so there is nothing worth advertising
-  /// for/discovering until files are actually picked and a destination is
-  /// about to be chosen.
+  /// Files are picked: only now does the send side detect the transport
+  /// and start looking for devices.
   void filesPicked(List<String> filePaths) {
-    state = state.copyWith(stage: HomeFlowStage.deviceSelectSend, filePaths: filePaths);
+    _teardown();
     ref.read(nearbyDevicesProvider.notifier).clear();
-    unawaited(ref.read(fileDropServiceProvider).startDiscovery(ref.read(fileDropServiceProvider).selfDevice));
+    state = HomeFlowState(
+      stage: HomeFlowStage.deviceSelectSend,
+      filePaths: filePaths,
+    );
+    unawaited(_prepareSend(_generation));
+  }
+
+  bool _sending(int gen) =>
+      gen == _generation && state.stage == HomeFlowStage.deviceSelectSend;
+
+  void _setSend(SendLink Function(SendLink) f) =>
+      state = state.copyWith(send: f(state.send));
+
+  Future<void> _prepareSend(int gen) async {
+    _setSend((_) => const SendLink());
+    String? ip;
+    try {
+      ip = await _service.checkUsableLan();
+    } catch (_) {
+      ip = null;
+    }
+    if (!_sending(gen)) return;
+
+    if (ip != null) {
+      _setSend((s) => s.copyWith(transport: TransferTransport.wifi));
+      await _startSendDiscovery(gen);
+      return;
+    }
+
+    _setSend((s) => s.copyWith(transport: TransferTransport.direct));
+    if (!await WifiDirectService.instance.isWifiEnabled()) {
+      if (!_sending(gen)) return;
+      _setSend((s) => s.copyWith(stage: SendLinkStage.needWifi));
+      return;
+    }
+    try {
+      if (!await _requestWifiDirectPermission()) {
+        if (!_sending(gen)) return;
+        _setSend(
+          (s) => s.copyWith(
+            stage: SendLinkStage.error,
+            errorMessage: 'Permission was not granted, so a Wi-Fi Direct '
+                'connection cannot be started.',
+          ),
+        );
+        return;
+      }
+      await WifiDirectService.instance.joinNearbyGroup();
+      _directActive = true;
+      if (!_sending(gen)) {
+        _teardown();
+        return;
+      }
+      await _startSendDiscovery(gen);
+    } on WifiDirectException catch (e) {
+      if (!_sending(gen)) return;
+      _setSend((s) => s.copyWith(stage: SendLinkStage.error, errorMessage: e.message));
+    } catch (e) {
+      if (!_sending(gen)) return;
+      _setSend(
+        (s) => s.copyWith(
+          stage: SendLinkStage.error,
+          errorMessage: 'Could not start a Wi-Fi Direct connection: $e',
+        ),
+      );
+    }
+  }
+
+  Future<void> _startSendDiscovery(int gen) async {
+    try {
+      await _service.startDiscovery(_service.selfDevice);
+    } catch (e) {
+      if (!_sending(gen)) return;
+      _setSend((s) => s.copyWith(stage: SendLinkStage.error, errorMessage: '$e'));
+      return;
+    }
+    if (!_sending(gen)) return;
+    _setSend((s) => s.copyWith(stage: SendLinkStage.ready, clearError: true));
   }
 
   void deviceSelected(Device device) {
-    unawaited(ref.read(fileDropServiceProvider).stopDiscovery());
+    unawaited(_service.stopDiscovery().catchError((_) {}));
     state = state.copyWith(stage: HomeFlowStage.confirmSend, device: device);
   }
 
-  /// Returns to idle (Send/Receive choice). Used both after a successful
-  /// dispatch (the active-transfer view then takes over) and when the
-  /// user backs out of the flow mid-way.
-  void reset() {
-    _maybeRemoveWifiDirectGroup();
-    _maybeStopDiscovery();
+  /// Back to the Send/Receive choice. With [keepLink] (after a send was
+  /// dispatched) the connection is left up so the transfer can finish;
+  /// it is torn down by the next flow or when the user backs out.
+  void reset({bool keepLink = false}) {
+    if (keepLink) {
+      unawaited(_service.stopDiscovery().catchError((_) {}));
+    } else {
+      _teardown();
+    }
     state = const HomeFlowState();
   }
 
-  /// Step back one stage, discarding whatever was selected at the stage
-  /// being left. Used for in-flow back-button handling.
+  /// Step back one stage. Leaving a Send/Receive screen stops discovery,
+  /// the server and any Wi-Fi Direct link.
   void back() {
     switch (state.stage) {
       case HomeFlowStage.idle:
-        state = const HomeFlowState();
-      case HomeFlowStage.receiveMode:
-        _maybeRemoveWifiDirectGroup();
-        state = const HomeFlowState();
       case HomeFlowStage.filePicker:
-        state = const HomeFlowState();
+      case HomeFlowStage.receiveMode:
+        reset();
       case HomeFlowStage.deviceSelectSend:
-        _maybeStopDiscovery();
-        state = state.copyWith(stage: HomeFlowStage.filePicker, clearDevice: true);
+        _teardown();
+        state = HomeFlowState(stage: HomeFlowStage.filePicker, filePaths: state.filePaths);
       case HomeFlowStage.confirmSend:
-        // Returning to device selection: still need discovery running.
-        // Not cleared here — the previously-discovered list is still
-        // fresh (discovery was never stopped between deviceSelectSend and
-        // confirmSend), so re-showing it immediately is correct.
-        state = state.copyWith(stage: HomeFlowStage.deviceSelectSend, clearDevice: true);
-        unawaited(
-          ref.read(fileDropServiceProvider).startDiscovery(ref.read(fileDropServiceProvider).selfDevice),
+        // Discovery was stopped on selection; restart it for the list.
+        state = state.copyWith(
+          stage: HomeFlowStage.deviceSelectSend,
+          clearDevice: true,
         );
+        unawaited(_startSendDiscovery(_generation));
     }
   }
 
-  /// Stops discovery if the current/previous stage was one where the
-  /// nearby-devices list is shown ([HomeFlowStage.deviceSelectSend] or
-  /// [HomeFlowStage.confirmSend]) — a no-op call is harmless from any other
-  /// stage, so this is safe to call unconditionally from [reset]/[back].
-  void _maybeStopDiscovery() {
-    if (state.stage == HomeFlowStage.deviceSelectSend || state.stage == HomeFlowStage.confirmSend) {
-      unawaited(ref.read(fileDropServiceProvider).stopDiscovery());
+  /// Stops discovery, the receive server and any Wi-Fi Direct link, and
+  /// invalidates in-flight async set-up.
+  void _teardown() {
+    _generation++;
+    unawaited(_service.stopDiscovery().catchError((_) {}));
+    if (_service.isServerRunning) {
+      unawaited(_service.stopServer().catchError((_) {}));
     }
-  }
-
-  /// Tears down any Wi-Fi Direct group created this session. Only called
-  /// (fire-and-forget) when leaving receive mode, and only actually calls
-  /// into the platform channel if a group was created — `removeGroup()`
-  /// on the Kotlin side is harmless even with nothing to remove, but this
-  /// avoids the call entirely in the common ExistingLan-only case.
-  void _maybeRemoveWifiDirectGroup() {
-    if (!state.receive.groupCreated) return;
-    // Fire-and-forget: nothing in the UI blocks on teardown completing,
-    // and WifiDirectService.removeGroup already treats "no group"/failure
-    // as a benign outcome on the Kotlin side.
-    unawaited(WifiDirectService.instance.removeGroup().catchError((_) {}));
+    if (_directActive) {
+      _directActive = false;
+      unawaited(WifiDirectService.instance.removeGroup().catchError((_) {}));
+    }
   }
 }
 
@@ -300,12 +414,14 @@ class HomeFlowState {
   final List<String> filePaths;
   final Device? device;
   final ReceiveState receive;
+  final SendLink send;
 
   const HomeFlowState({
     this.stage = HomeFlowStage.idle,
     this.filePaths = const [],
     this.device,
     this.receive = const ReceiveState(),
+    this.send = const SendLink(),
   });
 
   HomeFlowState copyWith({
@@ -313,14 +429,15 @@ class HomeFlowState {
     List<String>? filePaths,
     Device? device,
     ReceiveState? receive,
-    bool clearFiles = false,
+    SendLink? send,
     bool clearDevice = false,
   }) =>
       HomeFlowState(
         stage: stage ?? this.stage,
-        filePaths: clearFiles ? const [] : (filePaths ?? this.filePaths),
+        filePaths: filePaths ?? this.filePaths,
         device: clearDevice ? null : (device ?? this.device),
         receive: receive ?? this.receive,
+        send: send ?? this.send,
       );
 }
 
@@ -355,11 +472,7 @@ class NearbyDevicesNotifier extends Notifier<Map<String, Device>> {
     return const {};
   }
 
-  /// Clears stale entries from a previous discovery session. Called by
-  /// [HomeFlowNotifier] right before starting a fresh discovery pass, so
-  /// re-entering device selection never shows a device that stopped
-  /// advertising while discovery was off (no `DeviceDisconnected` event
-  /// fires in that case — the peer simply isn't re-broadcast to).
+  /// Clears stale entries from a previous discovery session.
   void clear() => state = const {};
 }
 
@@ -376,6 +489,17 @@ class ActiveTransfersNotifier extends Notifier<Map<String, TransferProgress>> {
       next.whenData(_handle);
     });
     return const {};
+  }
+
+  /// Drops completed/failed entries so the home screen can return to the
+  /// Send/Receive choice once nothing is in flight.
+  void clearFinished() {
+    state = {
+      for (final e in state.entries)
+        if (e.value.status == TransferStatus.inProgress ||
+            e.value.status == TransferStatus.paused)
+          e.key: e.value,
+    };
   }
 
   void _handle(FileDropEvent event) {
