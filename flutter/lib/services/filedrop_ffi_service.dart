@@ -102,8 +102,19 @@ class FileDropFfiService {
   }
 
   Future<void> stopServer() async {
-    await _bindings.stopServer();
     _serverRunning = false;
+    final self = _selfDevice;
+    if (self != null) {
+      _selfDevice = Device(
+        deviceId: self.deviceId,
+        name: self.name,
+        address: '',
+        port: 0,
+        platform: self.platform,
+        paired: self.paired,
+      );
+    }
+    await _bindings.stopServer();
   }
 
   bool _serverRunning = false;

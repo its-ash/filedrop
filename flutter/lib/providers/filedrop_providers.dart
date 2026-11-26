@@ -138,22 +138,27 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
   /// attempt are ignored.
   int _generation = 0;
 
+  Future<void>? _teardownFuture;
+
   @override
   HomeFlowState build() => const HomeFlowState();
 
   FileDropFfiService get _service => ref.read(fileDropServiceProvider);
 
   void startSend() {
-    _teardown();
+    unawaited(_teardown());
     state = const HomeFlowState(stage: HomeFlowStage.filePicker);
   }
 
   /// Receive: if on Wi-Fi, start the server on the LAN; otherwise use
   /// Wi-Fi Direct (asking the user to turn the Wi-Fi radio on if needed).
   Future<void> startReceive() async {
-    _teardown();
+    final teardown = _teardown();
+    final gen = _generation;
     state = const HomeFlowState(stage: HomeFlowStage.receiveMode);
-    await _prepareReceive(_generation);
+    await teardown;
+    if (!_receiving(gen)) return;
+    await _prepareReceive(gen);
   }
 
   bool _receiving(int gen) =>
@@ -225,7 +230,7 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
       final address = await WifiDirectService.instance.createGroup();
       _directActive = true;
       if (!_receiving(gen)) {
-        _teardown();
+        unawaited(_teardown());
         return;
       }
       await _startServerAndWait(gen, address, TransferTransport.direct);
@@ -249,16 +254,20 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
   Future<void> openWifiPanel() => WifiDirectService.instance.openWifiPanel();
 
   /// Re-runs transport detection for whichever flow is active.
-  Future<void> retry() {
+  Future<void> retry() async {
     if (state.stage == HomeFlowStage.receiveMode) {
-      _generation++;
-      return _prepareReceive(_generation);
+      final teardown = _teardown();
+      final gen = _generation;
+      await teardown;
+      if (!_receiving(gen)) return;
+      await _prepareReceive(gen);
+    } else if (state.stage == HomeFlowStage.deviceSelectSend) {
+      final teardown = _teardown();
+      final gen = _generation;
+      await teardown;
+      if (!_sending(gen)) return;
+      await _prepareSend(gen);
     }
-    if (state.stage == HomeFlowStage.deviceSelectSend) {
-      _generation++;
-      return _prepareSend(_generation);
-    }
-    return Future.value();
   }
 
   /// Android 13+ needs `NEARBY_WIFI_DEVICES`; older versions need location.
@@ -271,14 +280,17 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
 
   /// Files are picked: only now does the send side detect the transport
   /// and start looking for devices.
-  void filesPicked(List<String> filePaths) {
-    _teardown();
+  Future<void> filesPicked(List<String> filePaths) async {
+    final teardown = _teardown();
+    final gen = _generation;
     ref.read(nearbyDevicesProvider.notifier).clear();
     state = HomeFlowState(
       stage: HomeFlowStage.deviceSelectSend,
       filePaths: filePaths,
     );
-    unawaited(_prepareSend(_generation));
+    await teardown;
+    if (!_sending(gen)) return;
+    await _prepareSend(gen);
   }
 
   bool _sending(int gen) =>
@@ -324,7 +336,7 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
       await WifiDirectService.instance.joinNearbyGroup();
       _directActive = true;
       if (!_sending(gen)) {
-        _teardown();
+        unawaited(_teardown());
         return;
       }
       await _startSendDiscovery(gen);
@@ -366,7 +378,7 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
     if (keepLink) {
       unawaited(_service.stopDiscovery().catchError((_) {}));
     } else {
-      _teardown();
+      unawaited(_teardown());
     }
     state = const HomeFlowState();
   }
@@ -380,7 +392,7 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
       case HomeFlowStage.receiveMode:
         reset();
       case HomeFlowStage.deviceSelectSend:
-        _teardown();
+        unawaited(_teardown());
         state = HomeFlowState(stage: HomeFlowStage.filePicker, filePaths: state.filePaths);
       case HomeFlowStage.confirmSend:
         // Discovery was stopped on selection; restart it for the list.
@@ -394,16 +406,23 @@ class HomeFlowNotifier extends Notifier<HomeFlowState> {
 
   /// Stops discovery, the receive server and any Wi-Fi Direct link, and
   /// invalidates in-flight async set-up.
-  void _teardown() {
+  Future<void> _teardown() {
     _generation++;
-    unawaited(_service.stopDiscovery().catchError((_) {}));
-    if (_service.isServerRunning) {
-      unawaited(_service.stopServer().catchError((_) {}));
-    }
-    if (_directActive) {
-      _directActive = false;
-      unawaited(WifiDirectService.instance.removeGroup().catchError((_) {}));
-    }
+    final prev = _teardownFuture;
+    final wasDirect = _directActive;
+    _directActive = false;
+    late final Future<void> fut;
+    fut = () async {
+      if (prev != null) await prev;
+      await Future.wait([
+        _service.stopDiscovery().catchError((_) {}),
+        if (_service.isServerRunning) _service.stopServer().catchError((_) {}),
+        if (wasDirect) WifiDirectService.instance.removeGroup().catchError((_) {}),
+      ]);
+      if (identical(_teardownFuture, fut)) _teardownFuture = null;
+    }();
+    _teardownFuture = fut;
+    return fut;
   }
 }
 

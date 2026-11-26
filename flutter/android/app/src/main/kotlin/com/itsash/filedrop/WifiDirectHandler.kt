@@ -222,8 +222,8 @@ class WifiDirectHandler(private val context: Context) : MethodChannel.MethodCall
                 channel,
                 object : WifiP2pManager.ActionListener {
                     override fun onSuccess() {
-                        Log.i(TAG, "createGroup: onSuccess, requesting connection info")
-                        requestGroupOwnerAddress(mgr, channel, result)
+                        Log.i(TAG, "createGroup: onSuccess, polling connection info")
+                        pollConnection(mgr, channel, Handler(Looper.getMainLooper()), result, 0)
                     }
 
                     override fun onFailure(reasonCode: Int) {
@@ -238,32 +238,6 @@ class WifiDirectHandler(private val context: Context) : MethodChannel.MethodCall
             )
         } catch (e: SecurityException) {
             Log.e(TAG, "createGroup: permission denied", e)
-            result.error("PERMISSION_DENIED", "Missing permission for Wi-Fi Direct.", e.message)
-        }
-    }
-
-    private fun requestGroupOwnerAddress(
-        mgr: WifiP2pManager,
-        channel: WifiP2pManager.Channel,
-        result: MethodChannel.Result,
-    ) {
-        try {
-            mgr.requestConnectionInfo(channel) { info ->
-                val address = info?.groupOwnerAddress?.hostAddress
-                if (info != null && info.groupFormed && address != null) {
-                    Log.i(TAG, "requestConnectionInfo: groupOwnerAddress=$address")
-                    result.success(address)
-                } else {
-                    Log.w(TAG, "requestConnectionInfo: no group info available")
-                    result.error(
-                        "NO_GROUP_INFO",
-                        "Wi-Fi Direct group was created but its address could not be determined.",
-                        null,
-                    )
-                }
-            }
-        } catch (e: SecurityException) {
-            Log.e(TAG, "requestConnectionInfo: permission denied", e)
             result.error("PERMISSION_DENIED", "Missing permission for Wi-Fi Direct.", e.message)
         }
     }

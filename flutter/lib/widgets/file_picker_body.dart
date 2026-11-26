@@ -34,7 +34,9 @@ class _FilePickerBodyState extends State<FilePickerBody> {
 
     final additions = <_PickedFile>[];
     for (final file in files) {
-      if (_selected.any((f) => f.file.path == file.path)) continue;
+      final path = file.path;
+      if (path == null) continue;
+      if (_selected.any((f) => f.file.path == path)) continue;
       final size = await file.xFile.length();
       additions.add(_PickedFile(file, size));
     }
@@ -121,7 +123,7 @@ class _FilePickerBodyState extends State<FilePickerBody> {
                   ),
                   FilledButton.icon(
                     onPressed: () => widget.onContinue(
-                      _selected.map((f) => f.file.path!).toList(),
+                      _selected.map((f) => f.file.path).whereType<String>().toList(),
                     ),
                     icon: const Icon(Icons.arrow_forward),
                     label: const Text('Continue'),

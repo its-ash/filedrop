@@ -11,7 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
 
 /// UDP port used for broadcast discovery packets.
 pub const BROADCAST_PORT: u16 = 53318;
@@ -43,12 +44,14 @@ fn parse_announce(bytes: &[u8]) -> Option<AnnouncePacket> {
 
 pub struct UdpBroadcastDiscovery {
     running: Arc<AtomicBool>,
+    tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl UdpBroadcastDiscovery {
     pub fn new() -> Self {
         Self {
             running: Arc::new(AtomicBool::new(false)),
+            tasks: Mutex::new(Vec::new()),
         }
     }
 
@@ -59,42 +62,46 @@ impl UdpBroadcastDiscovery {
         &self,
         self_device: DiscoveredDevice,
     ) -> Result<mpsc::Receiver<DiscoveredDevice>> {
+        self.stop().await?;
         self.running.store(true, Ordering::SeqCst);
 
         let listen_socket = UdpSocket::bind(("0.0.0.0", BROADCAST_PORT)).await?;
         listen_socket.set_broadcast(true)?;
 
-        let send_socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
-        send_socket.set_broadcast(true)?;
-
         let (tx, rx) = mpsc::channel(32);
+        let mut handles = Vec::new();
 
-        // Announcer task.
-        let running_announce = self.running.clone();
-        let announce_device = self_device.clone();
-        tokio::spawn(async move {
-            let packet = AnnouncePacket {
-                magic: MAGIC.to_string(),
-                device_id: announce_device.device_id,
-                name: announce_device.name.clone(),
-                port: announce_device.port,
-                platform: announce_device.platform.clone(),
-            };
-            let Ok(payload) = serde_json::to_vec(&packet) else {
-                return;
-            };
-            let dest: SocketAddr = ([255, 255, 255, 255], BROADCAST_PORT).into();
+        if !self_device.address.is_empty() && self_device.port != 0 {
+            let send_socket = UdpSocket::bind(("0.0.0.0", 0)).await?;
+            send_socket.set_broadcast(true)?;
 
-            while running_announce.load(Ordering::SeqCst) {
-                let _ = send_socket.send_to(&payload, dest).await;
-                tokio::time::sleep(ANNOUNCE_INTERVAL).await;
-            }
-        });
+            // Announcer task.
+            let running_announce = self.running.clone();
+            let announce_device = self_device.clone();
+            handles.push(tokio::spawn(async move {
+                let packet = AnnouncePacket {
+                    magic: MAGIC.to_string(),
+                    device_id: announce_device.device_id,
+                    name: announce_device.name.clone(),
+                    port: announce_device.port,
+                    platform: announce_device.platform.clone(),
+                };
+                let Ok(payload) = serde_json::to_vec(&packet) else {
+                    return;
+                };
+                let dest: SocketAddr = ([255, 255, 255, 255], BROADCAST_PORT).into();
+
+                while running_announce.load(Ordering::SeqCst) {
+                    let _ = send_socket.send_to(&payload, dest).await;
+                    tokio::time::sleep(ANNOUNCE_INTERVAL).await;
+                }
+            }));
+        }
 
         // Listener task.
         let running_listen = self.running.clone();
         let self_id = self_device.device_id;
-        tokio::spawn(async move {
+        handles.push(tokio::spawn(async move {
             let mut buf = vec![0u8; 4096];
             while running_listen.load(Ordering::SeqCst) {
                 let Ok((n, from)) = listen_socket.recv_from(&mut buf).await else {
@@ -119,13 +126,20 @@ impl UdpBroadcastDiscovery {
                     break;
                 }
             }
-        });
+        }));
+
+        *self.tasks.lock().await = handles;
 
         Ok(rx)
     }
 
     pub async fn stop(&self) -> Result<()> {
         self.running.store(false, Ordering::SeqCst);
+        let handles: Vec<_> = self.tasks.lock().await.drain(..).collect();
+        for handle in handles {
+            handle.abort();
+            let _ = handle.await;
+        }
         Ok(())
     }
 }

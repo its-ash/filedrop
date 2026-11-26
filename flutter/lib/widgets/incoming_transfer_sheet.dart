@@ -34,7 +34,7 @@ class IncomingTransferSheet extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Pairing token: ${request.token.substring(0, 8)}…',
+              'Pairing token: ${request.token.length > 8 ? '${request.token.substring(0, 8)}…' : request.token}',
               style: context.text.bodyMedium?.copyWith(
                 color: context.colors.textMuted,
               ),

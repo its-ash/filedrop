@@ -104,6 +104,7 @@ impl MdnsDiscovery {
 
     pub async fn stop(&self) -> Result<()> {
         let _ = self.daemon.stop_browse(SERVICE_TYPE);
+        let _ = self.daemon.shutdown();
         Ok(())
     }
 }

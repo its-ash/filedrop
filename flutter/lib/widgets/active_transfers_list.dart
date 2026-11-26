@@ -71,6 +71,7 @@ class _TransferCard extends StatelessWidget {
     final isPaused = progress.status == TransferStatus.paused;
     final isDone = progress.status == TransferStatus.completed;
     final isFailed = progress.status == TransferStatus.failed;
+    final isCancelled = progress.status == TransferStatus.cancelled;
 
     return UiCard(
       padding: const EdgeInsets.all(16),
@@ -92,22 +93,32 @@ class _TransferCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '${progress.percent.toStringAsFixed(0)}% · '
-                '${_formatBytes(progress.bytesTransferred)} / ${_formatBytes(progress.totalBytes)}',
-                style: context.text.bodyMedium,
+              Flexible(
+                child: Text(
+                  '${progress.percent.toStringAsFixed(0)}% · '
+                  '${_formatBytes(progress.bytesTransferred)} / ${_formatBytes(progress.totalBytes)}',
+                  style: context.text.bodyMedium,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              Text(
-                isDone
-                    ? 'Completed'
-                    : isFailed
-                    ? (progress.error ?? 'Failed')
-                    : '${_formatRate(progress.bytesPerSec)}${_formatEta(progress)}',
-                style: context.text.bodyMedium,
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  isDone
+                      ? 'Completed'
+                      : isCancelled
+                      ? 'Cancelled'
+                      : isFailed
+                      ? (progress.error ?? 'Failed')
+                      : '${_formatRate(progress.bytesPerSec)}${_formatEta(progress)}',
+                  style: context.text.bodyMedium,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                ),
               ),
             ],
           ),
-          if (!isDone && !isFailed) ...[
+          if (!isDone && !isFailed && !isCancelled) ...[
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

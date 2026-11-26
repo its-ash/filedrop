@@ -47,7 +47,9 @@ impl DiscoveryService {
         self_device: DiscoveredDevice,
         on_device: mpsc::Sender<DiscoveredDevice>,
     ) -> Result<()> {
-        self.mdns.advertise(&self_device).await?;
+        if !self_device.address.is_empty() && self_device.port != 0 {
+            self.mdns.advertise(&self_device).await?;
+        }
 
         let devices_mdns = self.devices.clone();
         let tx_mdns = on_device.clone();

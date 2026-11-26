@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Wi-Fi Direct (android.net.wifi.p2p.WifiP2pManager), used only for
          group creation/teardown to establish a transient direct link when
          no shared LAN exists (see docs/ARCHITECTURE.md). ACCESS_FINE_LOCATION

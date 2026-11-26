@@ -141,6 +141,9 @@ pub async fn stop_server() -> Result<(), String> {
 /// down the mDNS/UDP listeners it owns, and so `get_nearby_devices` can
 /// read its live device cache.
 pub async fn start_discovery(self_device: DiscoveredDeviceDto) -> Result<(), String> {
+    if let Some(prev) = runtime().discovery.lock().await.take() {
+        let _ = prev.stop().await;
+    }
     let service =
         Arc::new(filedrop_core::discovery::DiscoveryService::new("filedrop").map_err(|e| e.to_string())?);
     let (tx, mut rx) = tokio::sync::mpsc::channel(32);
@@ -244,8 +247,8 @@ pub async fn send_files(
         eng.queue
             .enqueue(QueuedTransfer {
                 id: transfer_id,
-                file_path: path.clone(),
-                file_name: file_name.clone(),
+                file_path: path,
+                file_name,
                 total_bytes: metadata.len(),
                 peer_device_id,
                 direction: TransferDirection::Send,
@@ -255,7 +258,7 @@ pub async fn send_files(
 
         let queue = eng.queue.clone();
         tokio::spawn(async move {
-            run_queued_send(queue, addr, transfer_id, path, file_name, metadata.len()).await;
+            run_queued_send(queue, addr).await;
         });
     }
 
@@ -265,18 +268,19 @@ pub async fn send_files(
 async fn run_queued_send(
     queue: Arc<filedrop_core::transfer::TransferQueue>,
     addr: SocketAddr,
-    transfer_id: Uuid,
-    path: PathBuf,
-    file_name: String,
-    total_bytes: u64,
 ) {
-    let Some((_, session, _permit)) = queue.next().await else {
+    let Some((queued, session, _permit)) = queue.next().await else {
         return;
     };
 
+    let transfer_id = queued.id;
+    let path = queued.file_path;
+    let file_name = queued.file_name;
+    let total_bytes = queued.total_bytes;
+
     runtime().emit(FileDropEvent::TransferStarted {
         transfer_id,
-        file_name: file_name.clone(),
+        file_name,
         total_bytes,
     });
 

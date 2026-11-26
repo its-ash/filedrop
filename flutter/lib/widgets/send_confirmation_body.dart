@@ -47,7 +47,7 @@ class _SendConfirmationBodyState extends ConsumerState<SendConfirmationBody> {
       );
       if (mounted) widget.onSent();
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _sending = false);
     }
